@@ -110,6 +110,7 @@ body > canvas{position:fixed;top:0;left:0;z-index:0;display:block;}
 <body>
 <div id="hud">
   <div id="crosshair"></div>
+  <div id="click-resume" style="display:none;position:fixed;top:50%;left:50%;transform:translate(-50%,-50%);background:rgba(0,0,0,.85);color:#8adc46;font-family:'Press Start 2P',monospace;font-size:18px;padding:24px 36px;border:2px solid #8adc46;border-radius:8px;z-index:15;text-align:center;pointer-events:none;">CLICK TO RESUME</div>
   <div id="health-wrap"><div id="health-label">HEALTH</div><div id="health-track"><div id="health-fill"></div></div></div>
   <div id="stamina-wrap"><div id="stamina-label">STAMINA</div><div id="stamina-track"><div id="stamina-fill" style="width:100%"></div></div></div>
   <div id="ammo-wrap"><div id="ammo-label">AMMO</div><div id="ammo-count">15/60</div><div id="weapon-name">PISTOL M9</div><div id="reload-msg">RELOADING...</div></div>
@@ -243,7 +244,7 @@ function startRainSound(){if(rainSoundNode)return;const ctx=getAudio();if(!ctx)r
 function startWindSound(){if(windSoundNode)return;const ctx=getAudio();if(!ctx)return;const buf=mkNoise(2);if(!buf)return;const src=ctx.createBufferSource();src.buffer=buf;src.loop=true;const f=ctx.createBiquadFilter();f.type='bandpass';f.frequency.value=400;f.Q.value=.3;const g=ctx.createGain();g.gain.value=0;windSoundNode=g;src.connect(f);f.connect(g);g.connect(ctx.destination);src.start();}
 
 // GAME STATE
-let health,score,wave,gameOver,started,reloading,reloadEndTime=0;
+let health,score,wave,gameOver,started,reloading,reloadEndTime=0,pointerLockLost=false;
 let curWeaponIdx=0,weapons=[],lastFireT=0,autoFireT=0,mouseDown=false;
 let selectedWeaponId='shotgun';
 let isADS=false,currentFOV=72;
@@ -1245,7 +1246,7 @@ function showScoresScreen(){
 document.addEventListener('keydown',e=>{
   keys[e.code]=true;
   if(['Space','ArrowUp','ArrowDown','ArrowLeft','ArrowRight'].includes(e.code))e.preventDefault();
-  if(e.code==='Escape'){if(started&&!gameOver){if(pointerLockLost){pointerLockLost=false;togglePause();}else{togglePause();}}return;}
+  if(e.code==='Escape'){if(started&&!gameOver){togglePause();}return;}
   if(!started||gameOver||paused)return;
   if(e.code==='KeyR'&&!reloading)startReload();
   if(e.code==='KeyV')doMelee();
@@ -1270,9 +1271,9 @@ document.addEventListener('mouseup',e=>{
   mouseDown=false;
 });
 document.addEventListener('contextmenu',e=>e.preventDefault());
-let pointerLockLost=false;
 document.addEventListener('pointerlockchange',()=>{
-  if(!document.pointerLockElement){isADS=false;document.getElementById('ads-overlay').style.display='none';document.getElementById('crosshair').style.display='block';if(started&&!gameOver&&!paused){paused=true;pointerLockLost=true;document.getElementById('pause-overlay').style.display='flex';}}
+  if(document.pointerLockElement===renderer.domElement){pointerLockLost=false;document.getElementById('click-resume').style.display='none';}
+  else{isADS=false;document.getElementById('ads-overlay').style.display='none';document.getElementById('crosshair').style.display='block';if(started&&!gameOver){pointerLockLost=true;document.getElementById('click-resume').style.display='block';}}
 });
 window.addEventListener('blur',()=>{keys={};});
 document.addEventListener('mousemove',e=>{
@@ -1303,6 +1304,7 @@ function startGame(){
   document.getElementById('upgrade-overlay').style.display='none';
   document.getElementById('pause-overlay').style.display='none';
   document.getElementById('scores-screen').style.display='none';
+  document.getElementById('click-resume').style.display='none';
   started=true;gameOver=false;paused=false;pointerLockLost=false;
   health=MAX_HEALTH+persistentData.upgrades.hp*25;score=0;wave=1;
   yaw=0;pitch=0;bobTimer=0;dayFactor=0;shakeAmt=0;
@@ -1367,6 +1369,7 @@ function endGame(){
   document.exitPointerLock();
   isADS=false;currentFOV=72;recoilPitch=0;recoilYaw=0;camera.fov=72;camera.updateProjectionMatrix();
   document.getElementById('ads-overlay').style.display='none';document.getElementById('crosshair').style.display='block';
+  document.getElementById('click-resume').style.display='none';
   document.getElementById('final-score').textContent='SCORE: '+score;
   document.getElementById('final-wave').textContent='REACHED WAVE '+wave;
   document.getElementById('game-over').style.display='flex';
