@@ -59,6 +59,7 @@ body > canvas{position:fixed;top:0;left:0;z-index:0;display:block;}
 #ads-ring::after{height:100%;width:1px;left:calc(50% - 1px);top:0;}
 #ads-dot{position:absolute;top:50%;left:50%;width:5px;height:5px;border-radius:50%;background:#ff1400;transform:translate(-50%,-50%);box-shadow:0 0 8px 3px rgba(255,20,0,.55);}
 #combo-wrap{position:fixed;top:calc(50% + 50px);left:50%;transform:translate(-50%,0);font-size:18px;letter-spacing:3px;color:#ffaa00;text-shadow:0 0 12px #aa6600;opacity:0;transition:opacity .3s,transform .1s;pointer-events:none;white-space:nowrap;}
+#combo-wrap.bump{transform:translate(-50%,-10%) scale(1.3);}
 #boss-health-wrap{position:fixed;top:calc(50% + 30px);left:50%;transform:translateX(-50%);width:200px;text-align:center;pointer-events:none;display:none;}
 #boss-health-label{font-size:9px;letter-spacing:3px;color:#8a1a1a;margin-bottom:2px;}
 #boss-health-track{width:200px;height:8px;background:#1a0a0a;border:1px solid #4a1a1a;margin:0 auto;}
@@ -177,6 +178,7 @@ body > canvas{position:fixed;top:0;left:0;z-index:0;display:block;}
     <div class="upg-opt opt-rate" data-type="rate">+20% FIRE RATE<br><span class="upg-count"></span></div>
     <div class="upg-opt opt-spread" data-type="spread">-30% SPREAD<br><span class="upg-count"></span></div>
   </div>
+  <button class="btn upg-dismiss" id="upg-dismiss" style="margin-top:16px;font-size:11px;padding:8px 24px;">SKIP</button>
 </div>
 <div id="scores-screen">
   <div class="screen-title" style="font-size:28px;letter-spacing:6px;">HIGH SCORES</div>
@@ -245,7 +247,7 @@ function startRainSound(){if(rainSoundNode)return;const ctx=getAudio();if(!ctx)r
 function startWindSound(){if(windSoundNode)return;const ctx=getAudio();if(!ctx)return;const buf=mkNoise(2);if(!buf)return;const src=ctx.createBufferSource();src.buffer=buf;src.loop=true;const f=ctx.createBiquadFilter();f.type='bandpass';f.frequency.value=400;f.Q.value=.3;const g=ctx.createGain();g.gain.value=0;windSoundNode=g;src.connect(f);f.connect(g);g.connect(ctx.destination);src.start();}
 
 // GAME STATE
-let health,score,wave,gameOver,started,reloading,reloadTimer;
+let health,score,wave,gameOver,started,reloading,reloadEndTime=0;
 let curWeaponIdx=0,weapons=[],lastFireT=0,autoFireT=0,mouseDown=false;
 let selectedWeaponId='shotgun';
 let isADS=false,currentFOV=72;
@@ -263,7 +265,7 @@ let meleeCooldown=0,meleeLunge=0;
 let comboCount=0,comboTimer=0;
 let paused=false,gameTime=0,gameTimeMs=0;
 let weaponSwapTimer=0,pendingSwapIdx=-1;
-let bloodPools=[],bloodPoolIdx=0;
+let bloodPools=[];
 let bossProjectiles=[],activeBoss=null;
 let powerupDrops=[],activePowerups={};
 let barricades=[],pushTarget=null;
@@ -274,7 +276,7 @@ let dmgArrowTimers={top:0,bottom:0,left:0,right:0};
 let casings=[];
 let nextSpawnGameTime=0,waveTransitionTime=0,waveState='idle';
 let strafeTilt=0;
-let muzzleFlashTimer=0;
+let muzzleFlashTimer=0,muzzleFlashSprite=null;
 let persistentData=null;
 const POOL_SIZE=50;
 let particlePool=[],bloodPoolMeshes=[];
@@ -510,7 +512,7 @@ function initWeapons(){
 function getEffectiveDmg(w){
   let d=w.dmg*(1+w.upgrades.dmg*.25);
   d*=(1+persistentData.upgrades.dmg*.2);
-  if(activePowerups['2xdmg']&&activePowerups['2xdmg']>0)d*=2;
+  if(activePowerups.dmg&&activePowerups.dmg>0)d*=2;
   return d;
 }
 function getEffectiveRate(w){return w.rate*(1-w.upgrades.rate*.2);}
@@ -557,7 +559,7 @@ function updateGunEffects(dt){
     weaponSwapTimer-=dt;
     if(weaponSwapTimer<=.25&&pendingSwapIdx>=0){
       curWeaponIdx=pendingSwapIdx;pendingSwapIdx=-1;
-      reloading=false;if(reloadTimer){clearTimeout(reloadTimer);reloadTimer=null;}
+      reloading=false;reloadEndTime=0;
       document.getElementById('reload-msg').style.display='none';
       updateGunModel();updateHUD();
     }
@@ -614,9 +616,8 @@ function fireWeapon(){
 function startReload(){
   const w=weapons[curWeaponIdx];
   if(reloading||w.reserve===0||w.mag===w.maxMag||w.id==='grenade')return;
-  reloading=true;playReload();
+  reloading=true;reloadEndTime=gameTimeMs+w.reloadT*1000;playReload();
   const rm=document.getElementById('reload-msg');rm.textContent='RELOADING...';rm.style.display='block';
-  reloadTimer=setTimeout(()=>{const take=Math.min(w.maxMag-w.mag,w.reserve===Infinity?w.maxMag:w.reserve);w.mag+=take;if(w.reserve!==Infinity)w.reserve-=take;reloading=false;rm.style.display='none';updateHUD();},w.reloadT*1000);
 }
 function doMelee(){
   if(meleeCooldown>0||weaponSwapTimer>0||paused||gameOver||!started)return;
@@ -877,11 +878,11 @@ function updateWaveSpawning(){
 }
 function getZType(){
   const r=Math.random();
-  if(wave>=4&&r<.2)return'big';if(wave>=3&&r<.35)return'runner';if(wave>=2&&r<.3)return'runner';return'regular';
+  if(wave>=4&&r<.2)return'big';if(wave>=3&&r<.3)return'runner';if(wave>=2&&r<.2)return'runner';return'regular';
 }
 function nextWave(){
   wave++;waveState='transition';
-  const msg=WAVE_MSGS[Math.min(wave,WAVE_MSGS.length-1)]||('WAVE '+wave+' - HORDE INCOMING');
+  const msg=wave<WAVE_MSGS.length?WAVE_MSGS[wave]:('WAVE '+wave+' - HORDE INCOMING');
   const el=document.getElementById('wave-announce');el.textContent=msg;el.style.opacity=1;
   setTimeout(()=>{el.style.opacity=0;},2800);
   updateHUD();
@@ -956,7 +957,8 @@ function updatePlayer(dt){
   }else{
     sprintEnergy=Math.min(100,sprintEnergy+15*dt);
     if(sprintEnergy>=20)canSprint=true;
-    if(windSoundNode)windSoundNode.gain.value=0;
+if(windSoundNode)windSoundNode.gain.value=0;
+  if(rainSoundNode)rainSoundNode.gain.value=0;
   }
   document.getElementById('stamina-fill').style.width=sprintEnergy+'%';
   document.getElementById('stamina-fill').style.background=sprintEnergy<30?'linear-gradient(to right,#8a4a10,#ccaa20)':'linear-gradient(to right,#2a4a8a,#5a8aaa)';
@@ -1142,6 +1144,10 @@ document.querySelectorAll('.upg-opt').forEach(o=>{
     updateHUD();
   });
 });
+document.getElementById('upg-dismiss').addEventListener('click',()=>{
+  paused=false;
+  document.getElementById('upgrade-overlay').style.display='none';
+});
 
 // PERSISTENT UPGRADES SCREEN
 const PERSIST_UPGRADES=[
@@ -1150,8 +1156,9 @@ const PERSIST_UPGRADES=[
   {id:'grenade',name:'+1 GRENADE',cost:3000,max:2},
   {id:'dmg',name:'+20% DAMAGE',cost:4000,max:3},
 ];
+let scoreBanked=false;
 function showUpgradesScreen(){
-  persistentData.availableScore+=score;
+  if(!scoreBanked){persistentData.availableScore+=score;scoreBanked=true;}
   savePersistent();
   document.getElementById('avail-score').textContent='AVAILABLE: '+persistentData.availableScore;
   const list=document.getElementById('persist-upgrades-list');list.innerHTML='';
@@ -1238,10 +1245,10 @@ function startGame(){
   isADS=false;currentFOV=72;recoilPitch=0;recoilYaw=0;
   camera.fov=72;camera.updateProjectionMatrix();
   document.getElementById('ads-overlay').style.display='none';document.getElementById('crosshair').style.display='block';
-  if(reloadTimer){clearTimeout(reloadTimer);reloadTimer=null;}
+  reloading=false;reloadEndTime=0;
   document.getElementById('reload-msg').style.display='none';
   document.getElementById('dmg').style.background='rgba(200,0,0,0)';
-  sprintEnergy=100;isSprinting=false;canSprint=true;meleeCooldown=0;meleeLunge=0;
+  sprintEnergy=100;isSprinting=false;canSprint=true;meleeCooldown=0;meleeLunge=0;scoreBanked=false;autoFireT=0;
   comboCount=0;comboTimer=0;updateComboDisplay();
   weaponSwapTimer=0;pendingSwapIdx=-1;
   gameTime=0;gameTimeMs=0;
@@ -1290,7 +1297,7 @@ function restartGame(){document.getElementById('game-over').style.display='none'
 function endGame(){
   if(gameOver)return;gameOver=true;
   persistentData.scores.push(score);savePersistent();
-  if(reloadTimer){clearTimeout(reloadTimer);reloadTimer=null;}
+  reloading=false;reloadEndTime=0;
   document.exitPointerLock();
   isADS=false;currentFOV=72;recoilPitch=0;recoilYaw=0;camera.fov=72;camera.updateProjectionMatrix();
   document.getElementById('ads-overlay').style.display='none';document.getElementById('crosshair').style.display='block';
@@ -1310,6 +1317,12 @@ function animate(){
   const dt=Math.min(clock.getDelta(),.05);
   if(started&&!gameOver&&!paused){
     gameTime+=dt;gameTimeMs=gameTime*1000;
+    if(reloading&&gameTimeMs>=reloadEndTime){
+      const w=weapons[curWeaponIdx];
+      const take=Math.min(w.maxMag-w.mag,w.reserve===Infinity?w.maxMag:w.reserve);
+      w.mag+=take;if(w.reserve!==Infinity)w.reserve-=take;
+      reloading=false;document.getElementById('reload-msg').style.display='none';updateHUD();
+    }
     updatePlayer(dt);updateZombies(dt);updateGrenades(dt);updateParticles(dt);
     updateLoot(dt);updateDayNight(dt);updateShake(dt);updateGunEffects(dt);updateADS(dt);updateRecoil(dt);
     updateBossProjectiles(dt);updatePowerupDrops(dt);updateActivePowerups(dt);
