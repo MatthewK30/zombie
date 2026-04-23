@@ -772,14 +772,14 @@ function updateZombies(dt){
       const stepX=z.group.position.x+moveX*2,stepZ=z.group.position.z+moveZ*2;
       let blocked=false;
       for(let o=0;o<obstacles.length;o++){const ob=obstacles[o];if(Math.abs(stepX-ob.px)<ob.hx+def.sz*.5&&Math.abs(stepZ-ob.pz)<ob.hz+def.sz*.5){blocked=true;break;}}
-      if(blocked){z.avoidTimer=.5;z.avoidDir=Math.atan2(moveZ,moveX)+((Math.random()>.5?1:-1)*Math.PI/2);moveX=Math.cos(z.avoidDir);moveZ=Math.sin(z.avoidDir);}
+      if(blocked){z.avoidTimer=.5;z.avoidDir=Math.atan2(moveZ,moveX)+((Math.random()>.5?1:-1)*Math.PI/3);moveX=Math.cos(z.avoidDir);moveZ=Math.sin(z.avoidDir);}
     }
     // Check barricade attack
     let attackingBarricade=false;
     for(let bi=0;bi<barricades.length;bi++){const b=barricades[bi];if(b.destroyed)continue;
       const bdx=b.px-z.group.position.x,bdz=b.pz-z.group.position.z;
       const bd=Math.sqrt(bdx*bdx+bdz*bdz);
-      if(bd<2&&dist>1.5){attackingBarricade=true;
+      if(bd<2){attackingBarricade=true;
         if(gameTimeMs-z.lastDmgT>def.dmgCD){z.lastDmgT=gameTimeMs;b.health-=def.dmg;
           const hp=b.health/b.maxHealth;
           b.mesh.material.color.setRGB(.55*hp+.3*(1-hp),.42*hp+.3*(1-hp),.23*hp+.3*(1-hp));
@@ -794,6 +794,18 @@ function updateZombies(dt){
         let blocked=false;
         for(let o=0;o<obstacles.length;o++){const ob=obstacles[o];if(Math.abs(nx-ob.px)<ob.hx+def.sz*.3&&Math.abs(nz-ob.pz)<ob.hz+def.sz*.3){blocked=true;break;}}
         if(!blocked){z.group.position.x=nx;z.group.position.z=nz;}
+        else{
+          let nxOnly=z.group.position.x+moveX*spd,nzOnly=z.group.position.z;
+          let xBlocked=false;
+          for(let o=0;o<obstacles.length;o++){const ob=obstacles[o];if(Math.abs(nxOnly-ob.px)<ob.hx+def.sz*.3&&Math.abs(nzOnly-ob.pz)<ob.hz+def.sz*.3){xBlocked=true;break;}}
+          if(!xBlocked){z.group.position.x=nxOnly;z.group.position.z=nzOnly;}
+          else{
+            let nxOnly2=z.group.position.x,nzOnly2=z.group.position.z+moveZ*spd;
+            let zBlocked=false;
+            for(let o=0;o<obstacles.length;o++){const ob=obstacles[o];if(Math.abs(nxOnly2-ob.px)<ob.hx+def.sz*.3&&Math.abs(nzOnly2-ob.pz)<ob.hz+def.sz*.3){zBlocked=true;break;}}
+            if(!zBlocked){z.group.position.x=nxOnly2;z.group.position.z=nzOnly2;}
+          }
+        }
         z.walkT+=dt*(z.type==='runner'?8:4);z.group.position.y=Math.abs(Math.sin(z.walkT))*.06*def.sz;
       }else{
         if(!gameOver&&gameTimeMs-z.lastDmgT>def.dmgCD){
@@ -1238,6 +1250,10 @@ document.getElementById('upgrades-back').addEventListener('click',e=>{e.stopProp
 // GAME FLOW
 function startGame(){
   document.getElementById('start-screen').style.display='none';
+  document.getElementById('upgrades-screen').style.display='none';
+  document.getElementById('upgrade-overlay').style.display='none';
+  document.getElementById('pause-overlay').style.display='none';
+  document.getElementById('scores-screen').style.display='none';
   started=true;gameOver=false;paused=false;
   health=MAX_HEALTH+persistentData.upgrades.hp*25;score=0;wave=1;
   yaw=0;pitch=0;bobTimer=0;dayFactor=0;shakeAmt=0;
@@ -1251,6 +1267,7 @@ function startGame(){
   sprintEnergy=100;isSprinting=false;canSprint=true;meleeCooldown=0;meleeLunge=0;scoreBanked=false;autoFireT=0;
   comboCount=0;comboTimer=0;updateComboDisplay();
   weaponSwapTimer=0;pendingSwapIdx=-1;
+  lastFireT=-9999;
   gameTime=0;gameTimeMs=0;
   strafeTilt=0;
   // Clear entities
