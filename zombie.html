@@ -351,8 +351,8 @@ const hw=7,hd=5,fh=3.2,floorH=3.2;
 const t=.3;
 const wm=isYellow?yardWallMat:yardWall2Mat;
 box(hw*2,fh,t,wm,hx,fh,hz-hd);addObs(hx,hz-hd,hw+.3,t/2+.3);
-box(t,fh,hd*2,t,wm,hx-hw,fh/2,hz);addObs(hx-hw,hz,t/2+.3,hd+.3);
-box(t,fh,hd*2,t,wm,hx+hw,fh/2,hz);addObs(hx+hw,hz,t/2+.3,hd+.3);
+box(t,fh,hd*2,wm,hx-hw,fh/2,hz);addObs(hx-hw,hz,t/2+.3,hd+.3);
+box(t,fh,hd*2,wm,hx+hw,fh/2,hz);addObs(hx+hw,hz,t/2+.3,hd+.3);
 const sw=(hw*2-2.4)/2;
 box(sw,fh,t,wm,hx-sw/2-1.2,fh/2,hz+hd);addObs(hx-sw/2-1.2,hz+hd,sw/2+.3,t/2+.3);
 box(sw,fh,t,wm,hx+sw/2+1.2,fh/2,hz+hd);addObs(hx+sw/2+1.2,hz+hd,sw/2+.3,t/2+.3);
@@ -1245,7 +1245,7 @@ function showScoresScreen(){
 document.addEventListener('keydown',e=>{
   keys[e.code]=true;
   if(['Space','ArrowUp','ArrowDown','ArrowLeft','ArrowRight'].includes(e.code))e.preventDefault();
-  if(e.code==='Escape'){if(started&&!gameOver){togglePause();}return;}
+  if(e.code==='Escape'){if(started&&!gameOver){if(pointerLockLost){pointerLockLost=false;togglePause();}else{togglePause();}}return;}
   if(!started||gameOver||paused)return;
   if(e.code==='KeyR'&&!reloading)startReload();
   if(e.code==='KeyV')doMelee();
@@ -1270,9 +1270,11 @@ document.addEventListener('mouseup',e=>{
   mouseDown=false;
 });
 document.addEventListener('contextmenu',e=>e.preventDefault());
+let pointerLockLost=false;
 document.addEventListener('pointerlockchange',()=>{
-  if(!document.pointerLockElement){isADS=false;document.getElementById('ads-overlay').style.display='none';document.getElementById('crosshair').style.display='block';}
+  if(!document.pointerLockElement){isADS=false;document.getElementById('ads-overlay').style.display='none';document.getElementById('crosshair').style.display='block';if(started&&!gameOver&&!paused){paused=true;pointerLockLost=true;document.getElementById('pause-overlay').style.display='flex';}}
 });
+window.addEventListener('blur',()=>{keys={};});
 document.addEventListener('mousemove',e=>{
   if(document.pointerLockElement!==renderer.domElement)return;
   if(wwActive){wwAccumX+=e.movementX;wwAccumY+=e.movementY;updateWeaponWheel();return;}
@@ -1282,7 +1284,7 @@ window.addEventListener('resize',()=>{camera.aspect=innerWidth/innerHeight;camer
 
 // PAUSE
 function togglePause(){
-  if(paused){paused=false;document.getElementById('pause-overlay').style.display='none';renderer.domElement.requestPointerLock();}
+  if(paused){paused=false;pointerLockLost=false;document.getElementById('pause-overlay').style.display='none';renderer.domElement.requestPointerLock();}
   else{paused=true;document.getElementById('pause-overlay').style.display='flex';document.exitPointerLock();}
 }
 document.getElementById('resume-btn').addEventListener('click',e=>{e.stopPropagation();if(paused)togglePause();});
@@ -1301,7 +1303,7 @@ function startGame(){
   document.getElementById('upgrade-overlay').style.display='none';
   document.getElementById('pause-overlay').style.display='none';
   document.getElementById('scores-screen').style.display='none';
-  started=true;gameOver=false;paused=false;
+  started=true;gameOver=false;paused=false;pointerLockLost=false;
   health=MAX_HEALTH+persistentData.upgrades.hp*25;score=0;wave=1;
   yaw=0;pitch=0;bobTimer=0;dayFactor=0;shakeAmt=0;
   reloading=false;mouseDown=false;lowAmmoBeeped=false;groansT=0;
