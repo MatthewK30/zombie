@@ -335,6 +335,9 @@ renderer.setPixelRatio(Math.min(devicePixelRatio,2));
 renderer.setSize(innerWidth,innerHeight);
 renderer.shadowMap.enabled=true;
 renderer.shadowMap.type=THREE.PCFSoftShadowMap;
+renderer.outputEncoding=THREE.sRGBEncoding;
+renderer.toneMapping=THREE.ACESFilmicToneMapping;
+renderer.toneMappingExposure=1.08;
 renderer.setClearColor(0xd4764a);
 document.body.appendChild(renderer.domElement);
 scene=new THREE.Scene();
@@ -343,8 +346,10 @@ camera=new THREE.PerspectiveCamera(72,innerWidth/innerHeight,.08,200);
 camera.rotation.order='YXZ';
 camera.position.set(SPAWN_X,PLAYER_HEIGHT,SPAWN_Z);
 const clock=new THREE.Clock();
-const ambientLight=new THREE.AmbientLight(0xffd4a0,.55);
+const ambientLight=new THREE.AmbientLight(0xffd4a0,.34);
 scene.add(ambientLight);
+const hemiLight=new THREE.HemisphereLight(0xffd2a8,0x24321d,.72);
+scene.add(hemiLight);
 const sunLight=new THREE.DirectionalLight(0xffa040,1.4);
 sunLight.position.set(-60,12,0);
 sunLight.castShadow=true;
@@ -353,8 +358,8 @@ sunLight.shadow.camera.near=1;sunLight.shadow.camera.far=200;
 sunLight.shadow.camera.left=-80;sunLight.shadow.camera.right=80;
 sunLight.shadow.camera.top=80;sunLight.shadow.camera.bottom=-80;
 scene.add(sunLight);
-const sunFill=new THREE.DirectionalLight(0xff8866,.3);
-sunFill.position.set(40,8,0);
+const sunFill=new THREE.DirectionalLight(0xffb36b,.48);
+sunFill.position.set(32,14,-18);
 scene.add(sunFill);
 const shootLight=new THREE.PointLight(0xffcc44,0,7);
 shootLight.position.set(.18,-.15,-.5);
@@ -365,17 +370,21 @@ const raycaster=new THREE.Raycaster();
 
 // TEXTURES
 function mkTex(fn,w,h,rx,ry){w=w||512;h=h||512;rx=rx||1;ry=ry||1;const c=document.createElement('canvas');c.width=w;c.height=h;fn(c.getContext('2d'),w,h);const t=new THREE.CanvasTexture(c);t.wrapS=t.wrapT=THREE.RepeatWrapping;t.repeat.set(rx,ry);return t;}
-const asphaltTex=mkTex((ctx,w,h)=>{ctx.fillStyle='#2a2a2a';ctx.fillRect(0,0,w,h);for(let i=0;i<300;i++){const v=30+Math.random()*15|0;ctx.fillStyle='rgb('+v+','+v+','+v+')';const s=2+Math.random()*6;ctx.fillRect(Math.random()*w,Math.random()*h,s,s);}},512,512,12,12);
-const sidewalkTex=mkTex((ctx,w,h)=>{ctx.fillStyle='#aaaaaa';ctx.fillRect(0,0,w,h);ctx.strokeStyle='#999';ctx.lineWidth=2;for(let x=0;x<w;x+=64){ctx.beginPath();ctx.moveTo(x,0);ctx.lineTo(x,h);ctx.stroke();}for(let y=0;y<h;y+=64){ctx.beginPath();ctx.moveTo(0,y);ctx.lineTo(w,y);ctx.stroke();}},256,256,12,12);
-const grassTex=mkTex((ctx,w,h)=>{ctx.fillStyle='#4a8a2a';ctx.fillRect(0,0,w,h);for(let i=0;i<600;i++){const g=50+Math.random()*40|0;ctx.fillStyle='rgb('+(30+Math.random()*30)+','+g+','+(10+Math.random()*20)+')';ctx.fillRect(Math.random()*w,Math.random()*h,2+Math.random()*3,2+Math.random()*3);}},256,256,8,8);
-const wallTexYellow=mkTex((ctx,w,h)=>{ctx.fillStyle='#d4b040';ctx.fillRect(0,0,w,h);for(let i=0;i<80;i++){ctx.fillStyle='rgba(180,160,50,'+(Math.random()*.2)+')';ctx.fillRect(Math.random()*w,Math.random()*h,2+Math.random()*8,2+Math.random()*8);}},128,128,1,1);
-const wallTexRed=mkTex((ctx,w,h)=>{ctx.fillStyle='#b83838';ctx.fillRect(0,0,w,h);for(let i=0;i<80;i++){ctx.fillStyle='rgba(160,40,40,'+(Math.random()*.2)+')';ctx.fillRect(Math.random()*w,Math.random()*h,2+Math.random()*8,2+Math.random()*8);}},128,128,1,1);
-const floorTex=mkTex((ctx,w,h)=>{ctx.fillStyle='#8a7a60';ctx.fillRect(0,0,w,h);for(let i=0;i<200;i++){ctx.fillStyle='rgba(120,100,70,'+(Math.random()*.15)+')';ctx.fillRect(Math.random()*w,Math.random()*h,4+Math.random()*8,4+Math.random()*8);}},128,128,1,1);
-const roofTex=mkTex((ctx,w,h)=>{ctx.fillStyle='#5a3a2a';ctx.fillRect(0,0,w,h);for(let i=0;i<150;i++){ctx.fillStyle='rgba(80,50,35,'+(Math.random()*.2)+')';ctx.fillRect(Math.random()*w,Math.random()*h,4+Math.random()*6,2+Math.random()*3);}},128,128,1,1);
+const texLoader=new THREE.TextureLoader();
+function setTexParams(t,rx,ry){t.wrapS=t.wrapT=THREE.RepeatWrapping;t.repeat.set(rx||1,ry||1);t.encoding=THREE.sRGBEncoding;return t;}
+function loadTex(path,rx,ry,fallback){if(!path)return fallback;const tex=fallback?fallback.clone():null;try{const loaded=texLoader.load(path);return setTexParams(loaded,rx,ry);}catch(e){return tex?setTexParams(tex,rx,ry):fallback;}}
+function makeStandardMat({color=0xffffff,map=null,roughness=.9,metalness=.05,emissive=0x000000,emissiveIntensity=0,transparent=false,opacity=1}={}){return new THREE.MeshStandardMaterial({color,map,roughness,metalness,emissive,emissiveIntensity,transparent,opacity});}
+const asphaltTex=mkTex((ctx,w,h)=>{const g=ctx.createLinearGradient(0,0,w,h);g.addColorStop(0,'#2a2b2d');g.addColorStop(1,'#1d1e20');ctx.fillStyle=g;ctx.fillRect(0,0,w,h);for(let i=0;i<800;i++){const v=25+Math.random()*30|0;ctx.fillStyle='rgba('+v+','+v+','+v+','+(.25+Math.random()*.35)+')';const s=1+Math.random()*4;ctx.fillRect(Math.random()*w,Math.random()*h,s,s);}for(let i=0;i<20;i++){ctx.strokeStyle='rgba(60,60,60,.45)';ctx.lineWidth=1+Math.random()*2;ctx.beginPath();const x=Math.random()*w;ctx.moveTo(x,0);ctx.lineTo(x+Math.random()*50-25,h);ctx.stroke();}},512,512,12,12);
+const sidewalkTex=mkTex((ctx,w,h)=>{ctx.fillStyle='#b8b8b3';ctx.fillRect(0,0,w,h);for(let i=0;i<260;i++){const v=150+Math.random()*35|0;ctx.fillStyle='rgba('+v+','+v+','+(v-5)+',.18)';ctx.fillRect(Math.random()*w,Math.random()*h,2+Math.random()*8,2+Math.random()*8);}ctx.strokeStyle='rgba(120,120,120,.7)';ctx.lineWidth=2;for(let x=0;x<w;x+=64){ctx.beginPath();ctx.moveTo(x,0);ctx.lineTo(x,h);ctx.stroke();}for(let y=0;y<h;y+=64){ctx.beginPath();ctx.moveTo(0,y);ctx.lineTo(w,y);ctx.stroke();}},256,256,12,12);
+const grassTex=mkTex((ctx,w,h)=>{const g=ctx.createLinearGradient(0,0,w,h);g.addColorStop(0,'#507f31');g.addColorStop(1,'#35571f');ctx.fillStyle=g;ctx.fillRect(0,0,w,h);for(let i=0;i<1400;i++){const green=55+Math.random()*70|0;ctx.fillStyle='rgba('+(25+Math.random()*20|0)+','+green+','+(10+Math.random()*18|0)+','+(.3+Math.random()*.45)+')';ctx.fillRect(Math.random()*w,Math.random()*h,1+Math.random()*2.5,3+Math.random()*6);}for(let i=0;i<80;i++){ctx.fillStyle='rgba(120,100,55,.12)';ctx.beginPath();ctx.arc(Math.random()*w,Math.random()*h,4+Math.random()*9,0,Math.PI*2);ctx.fill();}},256,256,8,8);
+const wallTexYellow=mkTex((ctx,w,h)=>{ctx.fillStyle='#c7aa7a';ctx.fillRect(0,0,w,h);for(let y=0;y<h;y+=14){ctx.fillStyle='rgba(255,255,255,.05)';ctx.fillRect(0,y,w,2);}for(let i=0;i<220;i++){ctx.fillStyle='rgba(130,105,70,'+(.06+Math.random()*.08)+')';ctx.fillRect(Math.random()*w,Math.random()*h,4+Math.random()*14,1+Math.random()*3);}},128,128,1,1);
+const wallTexRed=mkTex((ctx,w,h)=>{ctx.fillStyle='#8f5f53';ctx.fillRect(0,0,w,h);for(let y=0;y<h;y+=14){ctx.fillStyle='rgba(255,255,255,.04)';ctx.fillRect(0,y,w,2);}for(let i=0;i<220;i++){ctx.fillStyle='rgba(70,35,30,'+(.05+Math.random()*.08)+')';ctx.fillRect(Math.random()*w,Math.random()*h,4+Math.random()*14,1+Math.random()*3);}},128,128,1,1);
+const floorTex=mkTex((ctx,w,h)=>{ctx.fillStyle='#8a6d4d';ctx.fillRect(0,0,w,h);for(let x=0;x<w;x+=16){ctx.fillStyle='rgba(60,35,20,.18)';ctx.fillRect(x,0,1,h);}for(let i=0;i<260;i++){ctx.fillStyle='rgba(120,90,60,'+(.08+Math.random()*.12)+')';ctx.fillRect(Math.random()*w,Math.random()*h,6+Math.random()*18,2+Math.random()*5);}},128,128,2,2);
+const roofTex=mkTex((ctx,w,h)=>{ctx.fillStyle='#4d4139';ctx.fillRect(0,0,w,h);for(let y=0;y<h;y+=10){ctx.fillStyle='rgba(25,20,18,.32)';ctx.fillRect(0,y,w,2);for(let x=((y/10)%2)*10;x<w;x+=20){ctx.fillStyle='rgba(90,76,68,.35)';ctx.fillRect(x,y+2,12,6);}}},128,128,2,2);
 const fenceTex=mkTex((ctx,w,h)=>{ctx.fillStyle='#ffffff';ctx.fillRect(0,0,w,h);ctx.fillStyle='#e8e8e8';for(let y=0;y<h;y+=12){ctx.fillRect(0,y,w,2);}ctx.fillStyle='#ddd';for(let x=0;x<w;x+=6){ctx.fillRect(x,0,1,h);}},32,32,1,1);
 
 // WORLD HELPERS
-function mkMat(color){return new THREE.MeshLambertMaterial({color});}
+function mkMat(color){return makeStandardMat({color,roughness:.88,metalness:.04});}
 function box(w,h,d,mat,x,y,z,rY){const m=new THREE.Mesh(new THREE.BoxGeometry(w,h,d),mat);m.position.set(x,y,z);if(rY)m.rotation.y=rY;m.castShadow=m.receiveShadow=true;scene.add(m);return m;}
 function addObs(x,z,hx,hz){obstacles.push({px:x,pz:z,hx,hz});}
 function isBlocked(x,z,r){return obstacles.some(o=>Math.abs(x-o.px)<o.hx+r&&Math.abs(z-o.pz)<o.hz+r);}
@@ -397,39 +406,51 @@ function getSafeSpawn(){
 }
 function mkSignTex(text,bg,fg){return mkTex((ctx,w,h)=>{ctx.fillStyle=bg;ctx.fillRect(0,0,w,h);ctx.fillStyle=fg;ctx.font='bold 48px Arial';ctx.textAlign='center';ctx.textBaseline='middle';ctx.fillText(text,w/2,h/2);},256,128,1,1);}
 
-const yellowWallMat=new THREE.MeshLambertMaterial({map:wallTexYellow});
-const redWallMat=new THREE.MeshLambertMaterial({map:wallTexRed});
-const floorMat=new THREE.MeshLambertMaterial({map:floorTex});
-const roofMatT=new THREE.MeshLambertMaterial({map:roofTex});
-const interiorWallMat=mkMat(0xd4c8a0);
-const windowMat=new THREE.MeshBasicMaterial({color:0x334466,transparent:true,opacity:.7});
-const windowLitMat=new THREE.MeshBasicMaterial({color:0xffcc66,transparent:true,opacity:.8});
-const furnitureWoodMat=mkMat(0x6a4a2a);
-const furnitureFabricMat=mkMat(0x8a3030);
-const kitchenMat=mkMat(0xccbbaa);
-const stairMat=mkMat(0x7a5a3a);
+const yellowWallMat=makeStandardMat({map:loadTex('assets/textures/house_siding_basecolor.jpg',1,1,wallTexYellow),roughness:.9});
+const redWallMat=makeStandardMat({map:wallTexRed,roughness:.92});
+const floorMat=makeStandardMat({map:loadTex('assets/textures/wood_floor_basecolor.jpg',2,2,floorTex),roughness:.72});
+const roofMatT=makeStandardMat({map:loadTex('assets/textures/roof_shingles_basecolor.jpg',2,2,roofTex),roughness:.96});
+const interiorWallMat=makeStandardMat({map:loadTex('assets/textures/drywall_basecolor.jpg',1,1,mkTex((ctx,w,h)=>{ctx.fillStyle='#d8d0c2';ctx.fillRect(0,0,w,h);for(let i=0;i<120;i++){ctx.fillStyle='rgba(255,255,255,.05)';ctx.fillRect(Math.random()*w,Math.random()*h,2+Math.random()*6,2+Math.random()*6);}},128,128,1,1)),roughness:.94});
+const windowMat=new THREE.MeshPhysicalMaterial({color:0x7aa6c9,roughness:.08,metalness:.05,transparent:true,opacity:.28,transmission:.2});
+const windowLitMat=makeStandardMat({color:0xffdfad,roughness:.35,metalness:0,emissive:0xffb95a,emissiveIntensity:.55});
+const furnitureWoodMat=makeStandardMat({map:floorTex,roughness:.68,metalness:.02,color:0x7a5736});
+const furnitureFabricMat=makeStandardMat({color:0x6d5048,roughness:.98,metalness:0});
+const kitchenMat=makeStandardMat({color:0xc9c0b4,roughness:.42,metalness:.08});
+const stairMat=makeStandardMat({color:0x735742,roughness:.76,metalness:.02});
 const yardWallMat=mkMat(0xd4b040);
 const yardWall2Mat=mkMat(0xb83838);
 
-const houseExtMat=mkMat(0xc7aa7a);
+const houseExtMat=makeStandardMat({map:yellowWallMat.map,roughness:.9,color:0xffffff});
 const trimMat=mkMat(0xf0e4c8);
 function buildDrivewayCar(cx,cz,col){
-const body=box(4.2,1,2,mkMat(col),cx,.5,cz);addObs(cx,cz,2.3,1.2);
-box(2.7,.8,1.7,mkMat(0x334455),cx,1.35,cz);
-const wM=mkMat(0x111111);[[-1.5,.3,-1.1],[-1.5,.3,1.1],[1.5,.3,-1.1],[1.5,.3,1.1]].forEach(([x,y,z])=>box(.35,.55,.55,wM,cx+x,y,cz+z));
+const bodyMat=makeStandardMat({color:col,roughness:.28,metalness:.32});
+box(4.4,.9,2.05,bodyMat,cx,.48,cz);addObs(cx,cz,2.35,1.2);
+box(2.55,.72,1.62,makeStandardMat({color:0x2d3947,roughness:.12,metalness:.2}),cx,1.24,cz);
+box(.45,.2,1.88,bodyMat,cx+1.95,.4,cz);box(.45,.2,1.88,bodyMat,cx-1.95,.4,cz);
+box(.18,.16,.58,makeStandardMat({color:0xfff4c7,roughness:.22,emissive:0xffd36b,emissiveIntensity:.15}),cx+2.18,.55,cz+.52);box(.18,.16,.58,makeStandardMat({color:0xfff4c7,roughness:.22,emissive:0xffd36b,emissiveIntensity:.15}),cx+2.18,.55,cz-.52);
+box(.16,.16,.52,makeStandardMat({color:0xc42a24,roughness:.3,emissive:0x7a0906,emissiveIntensity:.18}),cx-2.18,.55,cz+.5);box(.16,.16,.52,makeStandardMat({color:0xc42a24,roughness:.3,emissive:0x7a0906,emissiveIntensity:.18}),cx-2.18,.55,cz-.5);
+const wM=makeStandardMat({color:0x111111,roughness:.95});[[-1.5,.3,-1.1],[-1.5,.3,1.1],[1.5,.3,-1.1],[1.5,.3,1.1]].forEach(([x,y,z])=>box(.38,.58,.58,wM,cx+x,y,cz+z));
+box(.08,.18,.55,makeStandardMat({color:0x1a1a1a,roughness:.6,metalness:.35}),cx+.55,1.18,cz+1);box(.08,.18,.55,makeStandardMat({color:0x1a1a1a,roughness:.6,metalness:.35}),cx+.55,1.18,cz-1);
 return body;
 }
 function buildNeighborhoodHouse(hx,hz,idx){
 const hw=6,hd=5.5,fh=3.2,totalH=fh*2,t=.28,frontDir=hx<0?1:-1,frontX=hx+frontDir*hw,backX=hx-frontDir*hw,door=2.4,seg=(hd*2-door)/2;
 const ext=[houseExtMat,yellowWallMat,yardWall2Mat,redWallMat][idx%4];
 box(hw*2,t,hd*2,floorMat,hx,.12,hz);box(hw*2,t,hd*2,floorMat,hx,fh+.12,hz);box(hw*2,t,hd*2,roofMatT,hx,totalH+.16,hz);
+box(hw*2+.5,.12,hd*2+.5,trimMat,hx,totalH+.03,hz);
 box(hw*2,totalH,t,ext,hx,totalH/2,hz-hd);addObs(hx,hz-hd,hw+.25,t/2+.25);
 box(hw*2,totalH,t,ext,hx,totalH/2,hz+hd);addObs(hx,hz+hd,hw+.25,t/2+.25);
 box(t,totalH,hd*2,ext,backX,totalH/2,hz);addObs(backX,hz,t/2+.25,hd+.25);
 box(t,totalH,seg,ext,frontX,totalH/2,hz-hd/2-door/4);addObs(frontX,hz-hd/2-door/4,t/2+.25,seg/2+.25);
 box(t,totalH,seg,ext,frontX,totalH/2,hz+hd/2+door/4);addObs(frontX,hz+hd/2+door/4,t/2+.25,seg/2+.25);
 box(t,totalH*.25,door,trimMat,frontX,totalH*.9,hz);
+box(.18,2.25,1.2,makeStandardMat({color:0x5a3a2b,roughness:.62}),frontX+.02,1.12,hz);
+box(.32,.12,3.2,trimMat,frontX-frontDir*.2,.1,hz);box(.7,.12,2.4,trimMat,frontX-frontDir*.65,.24,hz);box(1.1,.12,1.6,trimMat,frontX-frontDir*1.15,.38,hz);
+box(.18,totalH+.05,hd*2+.15,trimMat,frontX+.02,totalH/2,hz);box(.18,totalH+.05,hd*2+.15,trimMat,backX-.02,totalH/2,hz);box(hw*2+.1,totalH+.05,.18,trimMat,hx,totalH/2,hz-hd-.02);box(hw*2+.1,totalH+.05,.18,trimMat,hx,totalH/2,hz+hd+.02);
+box(hw*2+.9,.14,hd*2.1,roofMatT,hx,totalH+.8,hz,0);box(hw*2.1,.16,hd*2.18,roofMatT,hx,totalH+1.2,hz,0);
+box(1.2,.16,hd*2.15,roofMatT,hx,totalH+1.55,hz,0);
 for(let f=0;f<2;f++){const y=1.75+f*fh;[-2.6,2.6].forEach(z=>{box(t,.9,1.1,windowMat,frontX+frontDir*.03,y,hz+z);box(t,.9,1.1,windowLitMat,backX-frontDir*.03,y,hz+z);});[-3,3].forEach(x=>{box(1.2,.9,t,windowMat,hx+x,y,hz-hd-.03);box(1.2,.9,t,windowLitMat,hx+x,y,hz+hd+.03);});}
+for(let f=0;f<2;f++){const y=1.75+f*fh;[-2.6,2.6].forEach(z=>{box(.12,1.02,1.24,trimMat,frontX-frontDir*.08,y,hz+z);box(.12,1.02,1.24,trimMat,backX+frontDir*.08,y,hz+z);});[-3,3].forEach(x=>{box(1.34,1.02,.12,trimMat,hx+x,y,hz-hd-.08);box(1.34,1.02,.12,trimMat,hx+x,y,hz+hd+.08);});}
 box(hw*.62,1.2,.25,interiorWallMat,hx-frontDir*3.35,.75,hz-.8);addObs(hx-frontDir*3.35,hz-.8,hw*.31+.2,.25);
 box(hw*.55,1.2,.25,interiorWallMat,hx+frontDir*2.25,.75,hz-.8);addObs(hx+frontDir*2.25,hz-.8,hw*.28+.2,.25);
 box(.25,1.2,hd*.75,interiorWallMat,hx-frontDir*1.2,.75,hz+2.35);addObs(hx-frontDir*1.2,hz+2.35,.25,hd*.38+.2);
@@ -445,20 +466,28 @@ box(2.5,.55,1.5,furnitureFabricMat,hx-frontDir*2.8,fh+.45,hz+2.8);
 box(1.6,.65,.8,furnitureWoodMat,hx+frontDir*2.5,fh+.48,hz+3.1);
 box(2.2,.65,.6,furnitureWoodMat,hx-frontDir*2.7,fh+.48,hz-3.1);
 box(.8,.7,.8,furnitureWoodMat,hx+frontDir*3,fh+.5,hz-2.7);
+const porchLight=new THREE.PointLight(0xffc98a,.9,6);porchLight.position.set(frontX-frontDir*.55,2.3,hz+1.6);scene.add(porchLight);
 buildingRects.push({x:hx,z:hz,w:hw*2,d:hd*2});
 }
 function buildWorld(){
 scene.add(new THREE.Mesh(new THREE.SphereGeometry(190,20,20),new THREE.MeshBasicMaterial({color:0xd4764a,side:THREE.BackSide})));
 const sunMesh=new THREE.Mesh(new THREE.SphereGeometry(5,12,12),new THREE.MeshBasicMaterial({color:0xffcc44}));sunMesh.position.set(-60,12,0);scene.add(sunMesh);
 for(let i=0;i<12;i++){const g=new THREE.Group();for(let j=0;j<4;j++){const sz=5+Math.random()*7;const cm=new THREE.Mesh(new THREE.BoxGeometry(sz,sz*.5,sz*.65),new THREE.MeshBasicMaterial({color:0xff8866,transparent:true,opacity:.7}));cm.position.set(j*5-7.5+(Math.random()-.5)*3,(Math.random()-.5)*2,(Math.random()-.5)*3);g.add(cm);}g.position.set((Math.random()-.5)*200,55+Math.random()*25,(Math.random()-.5)*200);scene.add(g);clouds.push({group:g,speed:.4+Math.random()*.8});}
-const grassGround=new THREE.Mesh(new THREE.PlaneGeometry(ARENA*2+20,ARENA*2+20),new THREE.MeshLambertMaterial({map:grassTex}));grassGround.rotation.x=-Math.PI/2;grassGround.receiveShadow=true;scene.add(grassGround);
-const roadW=12,sidewalkMat=new THREE.MeshLambertMaterial({map:sidewalkTex}),roadMat=new THREE.MeshLambertMaterial({map:asphaltTex});
+const grassGround=new THREE.Mesh(new THREE.PlaneGeometry(ARENA*2+20,ARENA*2+20),makeStandardMat({map:loadTex('assets/textures/grass_basecolor.jpg',8,8,grassTex),roughness:.98}));grassGround.rotation.x=-Math.PI/2;grassGround.receiveShadow=true;scene.add(grassGround);
+const roadW=12,sidewalkMat=makeStandardMat({map:loadTex('assets/textures/sidewalk_basecolor.jpg',12,12,sidewalkTex),roughness:.92}),roadMat=makeStandardMat({map:loadTex('assets/textures/asphalt_basecolor.jpg',12,12,asphaltTex),roughness:.96});
 const road=new THREE.Mesh(new THREE.PlaneGeometry(roadW,ARENA*2+4),roadMat);road.rotation.x=-Math.PI/2;road.position.set(0,.02,0);scene.add(road);
 const lineMat=new THREE.MeshBasicMaterial({color:0xffdd00});for(let z=-39;z<=39;z+=7){const l=new THREE.Mesh(new THREE.PlaneGeometry(.25,3.8),lineMat);l.rotation.x=-Math.PI/2;l.position.set(0,.035,z);scene.add(l);}
 [[-7.8,0,3,ARENA*2+2],[7.8,0,3,ARENA*2+2]].forEach(([x,z,w,d])=>{const sw=new THREE.Mesh(new THREE.PlaneGeometry(w,d),sidewalkMat);sw.rotation.x=-Math.PI/2;sw.position.set(x,.03,z);sw.receiveShadow=true;scene.add(sw);});
 addObs(0,-ARENA,ARENA*2,1);addObs(0,ARENA,ARENA*2,1);addObs(-ARENA,0,1,ARENA*2);addObs(ARENA,0,1,ARENA*2);
 const zs=[-30,-10,10,30],carCols=[0xaa2222,0x2244aa,0xaaaa22,0x888888,0x22aa44,0x884422,0x333333,0xeeeeee];
-zs.forEach((z,i)=>{buildNeighborhoodHouse(-24,z,i);buildNeighborhoodHouse(24,z,i+4);const dl=new THREE.Mesh(new THREE.PlaneGeometry(12,4),sidewalkMat);dl.rotation.x=-Math.PI/2;dl.position.set(-14,.035,z);scene.add(dl);const dr=new THREE.Mesh(new THREE.PlaneGeometry(12,4),sidewalkMat);dr.rotation.x=-Math.PI/2;dr.position.set(14,.035,z);scene.add(dr);buildDrivewayCar(-13,z,carCols[i]);buildDrivewayCar(13,z,carCols[i+4]);});
+const drivewayMat=makeStandardMat({map:loadTex('assets/textures/sidewalk_basecolor.jpg',4,4,sidewalkTex),roughness:.88,color:0xe0ddd2});
+zs.forEach((z,i)=>{buildNeighborhoodHouse(-24,z,i);buildNeighborhoodHouse(24,z,i+4);const dl=new THREE.Mesh(new THREE.PlaneGeometry(12,4),drivewayMat);dl.rotation.x=-Math.PI/2;dl.position.set(-14,.035,z);scene.add(dl);const dr=new THREE.Mesh(new THREE.PlaneGeometry(12,4),drivewayMat);dr.rotation.x=-Math.PI/2;dr.position.set(14,.035,z);scene.add(dr);buildDrivewayCar(-13,z,carCols[i]);buildDrivewayCar(13,z,carCols[i+4]);});
+const mailboxMat=makeStandardMat({color:0x5d6771,roughness:.5,metalness:.25}),postMat=makeStandardMat({color:0x7a5d43,roughness:.8});
+zs.forEach(z=>{[-9.2,9.2].forEach(x=>{box(.12,1.2,.12,postMat,x,.6,z+3.6);box(.5,.32,.32,mailboxMat,x+.25*Math.sign(x),1.05,z+3.6);});});
+const binMat=makeStandardMat({color:0x394b45,roughness:.72,metalness:.12});[-34,-14,6,26].forEach(z=>{box(.75,1.05,.7,binMat,-16,.52,z);addObs(-16,z,.45,.42);box(.75,1.05,.7,binMat,16,.52,z+2);addObs(16,z+2,.45,.42);});
+const leafMat=makeStandardMat({color:0x4d6f35,roughness:1});const trunkMat=makeStandardMat({color:0x5b4130,roughness:.95});[-36,-24,-4,4,24,36].forEach(z=>{[-34,34].forEach(x=>{box(.45,4.2,.45,trunkMat,x,2.1,z);box(3.2,2.8,3.2,leafMat,x,5.1,z);box(2.6,2.2,2.6,leafMat,x+((x>0)?-.4:.4),6.5,z+.2);});});
+const bushMat=makeStandardMat({color:0x49672f,roughness:1});zs.forEach(z=>{[-18.5,-20.5,-27.5,-29.5,18.5,20.5,27.5,29.5].forEach(x=>box(1.1,.8,1,bushMat,x,.4,z+4.8));});
+const signMat=makeStandardMat({color:0xd8e1e6,roughness:.55,metalness:.15});box(.18,4,.18,postMat,-4.8,2,-39);box(1.2,.8,.08,signMat,-4.8,3.7,-39);box(.18,4,.18,postMat,4.8,2,39);box(1.2,.8,.08,signMat,4.8,3.7,39);
 const poleMat=mkMat(0x555555);[-35,-21,-7,7,21,35].forEach(z=>{[-5.8,5.8].forEach(x=>{box(.18,4,.18,poleMat,x,2,z);box(.7,.25,.35,mkMat(0xffcc77),x,4.1,z);const pl=new THREE.PointLight(0xffcc77,0,13);pl.position.set(x,4,z);scene.add(pl);streetLights.push(pl);});});
 const fM2=mkMat(0x888888);for(let i=-40;i<40;i+=3){box(.1,1.5,.1,fM2,i,.75,ARENA-1);box(.1,1.5,.1,fM2,i,.75,-ARENA+1);box(.1,1.5,.1,fM2,ARENA-1,.75,i);box(.1,1.5,.1,fM2,-ARENA+1,.75,i);}
 for(let h=.4;h<1.8;h+=.5){box(ARENA*2,.04,.04,fM2,0,h,ARENA-1);box(ARENA*2,.04,.04,fM2,0,h,-ARENA+1);box(.04,.04,ARENA*2,fM2,ARENA-1,h,0);box(.04,.04,ARENA*2,fM2,-ARENA+1,h,0);}
