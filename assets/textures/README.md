@@ -8,6 +8,7 @@ Suggested filenames:
 - `sidewalk_basecolor.jpg`
 - `grass_basecolor.jpg`
 - `house_siding_basecolor.jpg`
+- `house_siding_red_basecolor.jpg`
 - `roof_shingles_basecolor.jpg`
 - `wood_floor_basecolor.jpg`
 - `drywall_basecolor.jpg`
@@ -30,6 +31,10 @@ Seamless tileable realistic patchy grass lawn texture, suburban neighborhood, to
 
 ```text
 Seamless tileable realistic beige vinyl house siding texture, suburban home exterior, top-down flat game material, no text, no logos, 1024x1024
+```
+
+```text
+Seamless tileable realistic faded red painted horizontal house siding texture, suburban home exterior, subtle dirt streaks, no windows, top-down flat game material, no text, no logos, 1024x1024
 ```
 
 ```text
