@@ -219,8 +219,10 @@ const ZDEFS={
 const RECOIL={pistol:{p:.042,y:.008},shotgun:{p:.085,y:.013},ak47:{p:.030,y:.013},sniper:{p:.115,y:.004},grenade:{p:0,y:0},m4a1:{p:.027,y:.011},smg:{p:.016,y:.007}};
 const WAVE_MSGS=['','WAVE 1 - SURVIVE!','WAVE 2 - HUNGRY','WAVE 3 - RUNNERS INCOMING','WAVE 4 - THE BIG ONE','WAVE 5 - ALL UNITS','WAVE 6 - DARKNESS FALLS'];
 const BUILDINGS=[
-  {name:'Yellow House',x:-18,z:-20,w:14,d:10},
-  {name:'Red House',x:-18,z:20,w:14,d:10},
+  {name:'West House 1',x:-24,z:-30,w:12,d:11},{name:'East House 1',x:24,z:-30,w:12,d:11},
+  {name:'West House 2',x:-24,z:-10,w:12,d:11},{name:'East House 2',x:24,z:-10,w:12,d:11},
+  {name:'West House 3',x:-24,z:10,w:12,d:11},{name:'East House 3',x:24,z:10,w:12,d:11},
+  {name:'West House 4',x:-24,z:30,w:12,d:11},{name:'East House 4',x:24,z:30,w:12,d:11},
 ];
 
 // AUDIO
@@ -258,6 +260,7 @@ let lowAmmoBeeped=false;
 let keys={},yaw=0,pitch=0;
 let zombies=[],obstacles=[],lootItems=[],particles=[],grenades=[],clouds=[];
 let buildingRects=[];
+let stairZones=[],houseFloorY=0;
 let groansT=0;
 let sprintEnergy=100,isSprinting=false,canSprint=true;
 let meleeCooldown=0,meleeLunge=0;
@@ -280,6 +283,7 @@ let persistentData=null;
 const POOL_SIZE=50;
 let particlePool=[],bloodPoolMeshes=[];
 let isCrouching=false,velY=0,jumpOffset=0,isGrounded=true,leanAmt=0;
+const SECOND_FLOOR_Y=3.2;
 
 function loadPersistent(){try{const d=localStorage.getItem('dzc_data');if(d)persistentData=JSON.parse(d);}catch(e){}if(!persistentData)persistentData={scores:[],upgrades:{hp:0,speed:0,grenade:0,dmg:0},availableScore:0};}
 function savePersistent(){try{localStorage.setItem('dzc_data',JSON.stringify(persistentData));}catch(e){}}
@@ -357,6 +361,17 @@ function mkMat(color){return new THREE.MeshLambertMaterial({color});}
 function box(w,h,d,mat,x,y,z,rY){const m=new THREE.Mesh(new THREE.BoxGeometry(w,h,d),mat);m.position.set(x,y,z);if(rY)m.rotation.y=rY;m.castShadow=m.receiveShadow=true;scene.add(m);return m;}
 function addObs(x,z,hx,hz){obstacles.push({px:x,pz:z,hx,hz});}
 function isBlocked(x,z,r){return obstacles.some(o=>Math.abs(x-o.px)<o.hx+r&&Math.abs(z-o.pz)<o.hz+r);}
+function clamp01(v){return Math.max(0,Math.min(1,v));}
+function getHouseFloorTarget(x,z){
+  for(const s of stairZones){
+    if(Math.abs(x-s.x)<s.hx&&Math.abs(z-s.z)<s.hz){
+      const p=s.dir<0?clamp01((s.x+s.hx-x)/(s.hx*2)):clamp01((x-(s.x-s.hx))/(s.hx*2));
+      return p*SECOND_FLOOR_Y;
+    }
+  }
+  for(const b of buildingRects){if(Math.abs(x-b.x)<b.w/2&&Math.abs(z-b.z)<b.d/2)return houseFloorY>SECOND_FLOOR_Y*.55?SECOND_FLOOR_Y:0;}
+  return 0;
+}
 function getSafeSpawn(){
   const candidates=[[SPAWN_X,SPAWN_Z],[0,12],[0,-12],[-10,0],[10,0]];
   for(const [x,z] of candidates){if(!isBlocked(x,z,PLAYER_RADIUS))return{x,z};}
@@ -378,141 +393,60 @@ const stairMat=mkMat(0x7a5a3a);
 const yardWallMat=mkMat(0xd4b040);
 const yardWall2Mat=mkMat(0xb83838);
 
-function buildNuketownHouse(hx,hz,wallCol,wallMat,isYellow){
-const hw=7,hd=5,fh=3.2,floorH=3.2;
-const t=.3;
-const wm=isYellow?yardWallMat:yardWall2Mat;
-box(hw*2,fh,t,wm,hx,fh,hz-hd);addObs(hx,hz-hd,hw+.3,t/2+.3);
-box(t,fh,hd*2,wm,hx-hw,fh/2,hz);addObs(hx-hw,hz,t/2+.3,hd+.3);
-box(t,fh,hd*2,wm,hx+hw,fh/2,hz);addObs(hx+hw,hz,t/2+.3,hd+.3);
-const sw=(hw*2-2.4)/2;
-box(sw,fh,t,wm,hx-sw/2-1.2,fh/2,hz+hd);addObs(hx-sw/2-1.2,hz+hd,sw/2+.3,t/2+.3);
-box(sw,fh,t,wm,hx+sw/2+1.2,fh/2,hz+hd);addObs(hx+sw/2+1.2,hz+hd,sw/2+.3,t/2+.3);
-box(2.4,fh*.3,t,wm,hx,fh*.85,hz+hd);
-box(hw*2,t,hd*2,roofMatT,hx,fh+.15,hz);
-box(hw*2,t,hd*2,floorMat,hx,.15,hz);
-box(hw*2,t,hd*2,floorMat,hx,floorH+.15,hz);
-box(hw*2,t,hd*2,floorMat,hx,floorH*2+.15,hz);
-const vMat=fh>3?windowLitMat:windowMat;
-for(let w=-2;w<=2;w+=2){
-box(1.6,1.2,t,vMat,hx+w,fh-1.2,hz-hd+.05);
-box(1.6,1.2,t,vMat,hx+w,floorH+fh-1.2,hz-hd+.05);
-box(1.6,1.2,t,vMat,hx+w,fh-1.2,hz+hd-.05);
-box(1.6,1.2,t,vMat,hx+w,floorH+fh-1.2,hz+hd-.05);
+const houseExtMat=mkMat(0xc7aa7a);
+const trimMat=mkMat(0xf0e4c8);
+function buildDrivewayCar(cx,cz,col){
+const body=box(4.2,1,2,mkMat(col),cx,.5,cz);addObs(cx,cz,2.3,1.2);
+box(2.7,.8,1.7,mkMat(0x334455),cx,1.35,cz);
+const wM=mkMat(0x111111);[[-1.5,.3,-1.1],[-1.5,.3,1.1],[1.5,.3,-1.1],[1.5,.3,1.1]].forEach(([x,y,z])=>box(.35,.55,.55,wM,cx+x,y,cz+z));
+return body;
 }
-box(t,fh,hd*2*.6,interiorWallMat,hx-2.3,fh/2,hz-1.5);addObs(hx-2.3,hz-1.5,t/2+.3,hd*.3+.3);
-box(t,floorH,hd*2*.7,interiorWallMat,hx+1.5,floorH/2+floorH,hz-.5);addObs(hx+1.5,hz-.5,t/2+.3,hd*.35+.3);
-box(3,.8,.6,furnitureWoodMat,hx-4,.4,hz-3);addObs(hx-4,hz-3,1.8,.4);
-box(1.5,.5,.8,furnitureFabricMat,hx-4,.25,hz);addObs(hx-4,hz,1,.5);
-box(2,.05,1.2,kitchenMat,hx+2,.9,hz-3.5);addObs(hx+2,hz-3.5,1.2,.7);
-box(.6,.05,.8,kitchenMat,hx+3.5,.9,hz-3.5);
-for(let s=0;s<6;s++){
-const sy=.3+s*.5;
-const sx=2.5+s*.3;
-box(1.2,t*.6,3.6,stairMat,hx+sx-floorH/2,sy+.15,hz+2);
-}
-box(3,.7,.5,furnitureWoodMat,hx-3,floorH+.35,hz+3);addObs(hx-3,hz+3,1.8,.4);
-box(2,.5,.6,furnitureFabricMat,hx+2,floorH+.25,hz+3);addObs(hx+2,hz+3,1.2,.4);
+function buildNeighborhoodHouse(hx,hz,idx){
+const hw=6,hd=5.5,fh=3.2,totalH=fh*2,t=.28,frontDir=hx<0?1:-1,frontX=hx+frontDir*hw,backX=hx-frontDir*hw,door=2.4,seg=(hd*2-door)/2;
+const ext=[houseExtMat,yellowWallMat,yardWall2Mat,redWallMat][idx%4];
+box(hw*2,t,hd*2,floorMat,hx,.12,hz);box(hw*2,t,hd*2,floorMat,hx,fh+.12,hz);box(hw*2,t,hd*2,roofMatT,hx,totalH+.16,hz);
+box(hw*2,totalH,t,ext,hx,totalH/2,hz-hd);addObs(hx,hz-hd,hw+.25,t/2+.25);
+box(hw*2,totalH,t,ext,hx,totalH/2,hz+hd);addObs(hx,hz+hd,hw+.25,t/2+.25);
+box(t,totalH,hd*2,ext,backX,totalH/2,hz);addObs(backX,hz,t/2+.25,hd+.25);
+box(t,totalH,seg,ext,frontX,totalH/2,hz-hd/2-door/4);addObs(frontX,hz-hd/2-door/4,t/2+.25,seg/2+.25);
+box(t,totalH,seg,ext,frontX,totalH/2,hz+hd/2+door/4);addObs(frontX,hz+hd/2+door/4,t/2+.25,seg/2+.25);
+box(t,totalH*.25,door,trimMat,frontX,totalH*.9,hz);
+for(let f=0;f<2;f++){const y=1.75+f*fh;[-2.6,2.6].forEach(z=>{box(t,.9,1.1,windowMat,frontX+frontDir*.03,y,hz+z);box(t,.9,1.1,windowLitMat,backX-frontDir*.03,y,hz+z);});[-3,3].forEach(x=>{box(1.2,.9,t,windowMat,hx+x,y,hz-hd-.03);box(1.2,.9,t,windowLitMat,hx+x,y,hz+hd+.03);});}
+box(hw*1.6,1.2,.25,interiorWallMat,hx,.75,hz-.8);addObs(hx,hz-.8,hw*.8+.2,.25);
+box(.25,1.2,hd*1.3,interiorWallMat,hx-frontDir*1.2,.75,hz+1.1);addObs(hx-frontDir*1.2,hz+1.1,.25,hd*.65+.2);
+box(2.4,.45,1.1,furnitureFabricMat,hx-frontDir*2.5,.35,hz+2.5);addObs(hx-frontDir*2.5,hz+2.5,1.4,.7);
+box(1.2,.35,1.2,furnitureWoodMat,hx+frontDir*1.2,.28,hz+2.7);addObs(hx+frontDir*1.2,hz+2.7,.8,.8);
+box(3,.8,.7,kitchenMat,hx-frontDir*2.4,.55,hz-3.2);addObs(hx-frontDir*2.4,hz-3.2,1.7,.55);
+box(1.4,.8,.7,kitchenMat,hx+frontDir*2.8,.55,hz-3.2);addObs(hx+frontDir*2.8,hz-3.2,.9,.55);
+const stairX=frontX-frontDir*2.4;stairZones.push({x:stairX,z:hz-2.1,hx:2.1,hz:1.2,dir:-frontDir});
+for(let s=0;s<8;s++){box(.8,.18,1.8,stairMat,frontX-frontDir*(.7+s*.45),.25+s*.34,hz-2.1);}
+box(hw*1.4,1.2,.25,interiorWallMat,hx,fh+.75,hz+.2);
+box(.25,1.2,hd*1.4,interiorWallMat,hx+frontDir*1.8,fh+.75,hz);
+box(2.5,.55,1.5,furnitureFabricMat,hx-frontDir*2.8,fh+.45,hz+2.8);
+box(1.6,.65,.8,furnitureWoodMat,hx+frontDir*2.5,fh+.48,hz+3.1);
+box(2.2,.65,.6,furnitureWoodMat,hx-frontDir*2.7,fh+.48,hz-3.1);
+box(.8,.7,.8,furnitureWoodMat,hx+frontDir*3,fh+.5,hz-2.7);
 buildingRects.push({x:hx,z:hz,w:hw*2,d:hd*2});
 }
-
 function buildWorld(){
 scene.add(new THREE.Mesh(new THREE.SphereGeometry(190,20,20),new THREE.MeshBasicMaterial({color:0xd4764a,side:THREE.BackSide})));
-const sunMesh=new THREE.Mesh(new THREE.SphereGeometry(5,12,12),new THREE.MeshBasicMaterial({color:0xffcc44}));
-sunMesh.position.set(-60,12,0);scene.add(sunMesh);
+const sunMesh=new THREE.Mesh(new THREE.SphereGeometry(5,12,12),new THREE.MeshBasicMaterial({color:0xffcc44}));sunMesh.position.set(-60,12,0);scene.add(sunMesh);
 for(let i=0;i<12;i++){const g=new THREE.Group();for(let j=0;j<4;j++){const sz=5+Math.random()*7;const cm=new THREE.Mesh(new THREE.BoxGeometry(sz,sz*.5,sz*.65),new THREE.MeshBasicMaterial({color:0xff8866,transparent:true,opacity:.7}));cm.position.set(j*5-7.5+(Math.random()-.5)*3,(Math.random()-.5)*2,(Math.random()-.5)*3);g.add(cm);}g.position.set((Math.random()-.5)*200,55+Math.random()*25,(Math.random()-.5)*200);scene.add(g);clouds.push({group:g,speed:.4+Math.random()*.8});}
-const grassGround=new THREE.Mesh(new THREE.PlaneGeometry(ARENA*2+20,ARENA*2+20),new THREE.MeshLambertMaterial({map:grassTex}));
-grassGround.rotation.x=-Math.PI/2;grassGround.receiveShadow=true;scene.add(grassGround);
-const roadTex=asphaltTex;
-const roadW=10;
-const roadZ=new THREE.Mesh(new THREE.PlaneGeometry(ARENA*2+4,roadW),new THREE.MeshLambertMaterial({map:roadTex}));
-roadZ.rotation.x=-Math.PI/2;roadZ.position.set(0,.02,0);scene.add(roadZ);
-const roadX=new THREE.Mesh(new THREE.PlaneGeometry(roadW,ARENA*2+4),new THREE.MeshLambertMaterial({map:roadTex}));
-roadX.rotation.x=-Math.PI/2;roadX.position.set(0,.02,0);scene.add(roadX);
-const lineMat=new THREE.MeshBasicMaterial({color:0xffdd00});
-for(let i=-40;i<=40;i+=6){
-const dh=new THREE.Mesh(new THREE.PlaneGeometry(.2,3),lineMat);
-dh.rotation.x=-Math.PI/2;dh.position.set(i,.03,0);scene.add(dh);
-const dv=new THREE.Mesh(new THREE.PlaneGeometry(3,.2),lineMat);
-dv.rotation.x=-Math.PI/2;dv.position.set(0,.03,i);scene.add(dv);
-}
-const sidewalkMat=new THREE.MeshLambertMaterial({map:sidewalkTex});
-[[-(roadW/2+1.5),0,90,3],[roadW/2+1.5,0,90,3],[0,-(roadW/2+1.5),3,90],[0,roadW/2+1.5,3,90]].forEach(([x,z,w,d])=>{
-const sw=new THREE.Mesh(new THREE.PlaneGeometry(w,d),sidewalkMat);
-sw.rotation.x=-Math.PI/2;sw.position.set(x,.03,z);sw.receiveShadow=true;scene.add(sw);
-});
+const grassGround=new THREE.Mesh(new THREE.PlaneGeometry(ARENA*2+20,ARENA*2+20),new THREE.MeshLambertMaterial({map:grassTex}));grassGround.rotation.x=-Math.PI/2;grassGround.receiveShadow=true;scene.add(grassGround);
+const roadW=12,sidewalkMat=new THREE.MeshLambertMaterial({map:sidewalkTex}),roadMat=new THREE.MeshLambertMaterial({map:asphaltTex});
+const road=new THREE.Mesh(new THREE.PlaneGeometry(roadW,ARENA*2+4),roadMat);road.rotation.x=-Math.PI/2;road.position.set(0,.02,0);scene.add(road);
+const lineMat=new THREE.MeshBasicMaterial({color:0xffdd00});for(let z=-39;z<=39;z+=7){const l=new THREE.Mesh(new THREE.PlaneGeometry(.25,3.8),lineMat);l.rotation.x=-Math.PI/2;l.position.set(0,.035,z);scene.add(l);}
+[[-7.8,0,3,ARENA*2+2],[7.8,0,3,ARENA*2+2]].forEach(([x,z,w,d])=>{const sw=new THREE.Mesh(new THREE.PlaneGeometry(w,d),sidewalkMat);sw.rotation.x=-Math.PI/2;sw.position.set(x,.03,z);sw.receiveShadow=true;scene.add(sw);});
 addObs(0,-ARENA,ARENA*2,1);addObs(0,ARENA,ARENA*2,1);addObs(-ARENA,0,1,ARENA*2);addObs(ARENA,0,1,ARENA*2);
-buildNuketownHouse(-18,-20,0xd4b040,yellowWallMat,true);
-buildNuketownHouse(18,-20,0xb83838,redWallMat,false);
-buildNuketownHouse(-18,20,0xb83838,redWallMat,false);
-buildNuketownHouse(18,20,0xd4b040,yellowWallMat,true);
-const busBody=new THREE.Mesh(new THREE.BoxGeometry(8,2.8,3.2),new THREE.MeshLambertMaterial({color:0xeecc22}));
-busBody.position.set(0,1.4,0);busBody.castShadow=true;scene.add(busBody);addObs(0,0,4.5,2);
-const busWinMat=new THREE.MeshBasicMaterial({color:0x334466,transparent:true,opacity:.7});
-for(let s=-1;s<=1;s+=2){
-for(let w=-2.5;w<=2.5;w+=1.5){
-const bw=new THREE.Mesh(new THREE.PlaneGeometry(1.2,.8),busWinMat);
-bw.position.set(w,2.2,s*1.61);if(s<0)bw.rotation.y=Math.PI;scene.add(bw);
-}}
-const busFront=new THREE.Mesh(new THREE.PlaneGeometry(3.2,2.2),new THREE.MeshLambertMaterial({color:0xddbb11}));
-busFront.position.set(4,1.8,0);busFront.rotation.y=Math.PI/2;scene.add(busFront);
-const busRear=new THREE.Mesh(new THREE.PlaneGeometry(3.2,2.2),new THREE.MeshLambertMaterial({color:0xccaa00}));
-busRear.position.set(-4,1.8,0);busRear.rotation.y=Math.PI/2;scene.add(busRear);
-const busWheels=mkMat(0x222222);
-[[-3.5,.35,1.7],[-3.5,.35,-1.7],[3.5,.35,1.7],[3.5,.35,-1.7]].forEach(([x,y,z])=>{
-box(.5,.5,.5,busWheels,x,y,z);addObs(x,z,.4,.4);
-});
-[[25,-20],[-25,-20],[25,20],[-25,20],[0,-28],[0,28]].forEach(([px,pz])=>{
-box(1.2,.9,.8,mkMat(0x8a6a3a),px,.45,pz);addObs(px,pz,.8,.5);
-});
-[[-28,-18],[-28,18],[28,-18],[28,18],[0,-25],[0,25],[-15,0],[15,0]].forEach(([px,pz])=>{
-box(.8,.7,.6,mkMat(0x5a5a4a),px,.35,pz);addObs(px,pz,.5,.4);
-});
-const sandbagMat=mkMat(0xa09060);
-[[-30,-10],[30,-10],[-30,10],[30,10]].forEach(([sx,sz])=>{
-for(let j=0;j<2;j++)for(let i=0;i<3;i++){
-box(.6,.3,.4,sandbagMat,sx+(i-1)*.65,j*.3+.15,sz);addObs(sx+(i-1)*.65,sz,.4,.25);
-}});
-const fenceMat=mkMat(0xe8e8e8);
-function buildPicketFence(fx,fz,angle,fLen){
-const posts=Math.floor(fLen/1.2);
-for(let i=0;i<=posts;i++){
-const px=fx+Math.cos(angle)*(i*1.2-fLen/2);
-const pz2=fz+Math.sin(angle)*(i*1.2-fLen/2);
-box(.06,1,.06,fenceMat,px,.5,pz2);
-}
-for(let h=.3;h<.9;h+=.3){
-const rx=fx,fz2=fz;
-box(fLen,.04,.04,fenceMat,rx,h,fz2);
-}
-addObs(fx,fz,fLen/2+.5,1.5);
-}
-buildPicketFence(-18,-30,0,14);
-buildPicketFence(18,-30,0,14);
-buildPicketFence(-18,30,0,14);
-buildPicketFence(18,30,0,14);
-buildPicketFence(-28,-20,Math.PI/2,14);
-buildPicketFence(-28,20,Math.PI/2,14);
-buildPicketFence(28,-20,Math.PI/2,14);
-buildPicketFence(28,20,Math.PI/2,14);
-const fM2=mkMat(0x888888);
-for(let i=-40;i<40;i+=3){
-box(.1,1.5,.1,fM2,i,.75,ARENA-1);
-box(.1,1.5,.1,fM2,i,.75,-ARENA+1);
-box(.1,1.5,.1,fM2,ARENA-1,.75,i);
-box(.1,1.5,.1,fM2,-ARENA+1,.75,i);
-}
-for(let h=.4;h<1.8;h+=.5){
-box(ARENA*2,.04,.04,fM2,0,h,ARENA-1);
-box(ARENA*2,.04,.04,fM2,0,h,-ARENA+1);
-box(.04,.04,ARENA*2,fM2,ARENA-1,h,0);
-box(.04,.04,ARENA*2,fM2,-ARENA+1,h,0);
-}
+const zs=[-30,-10,10,30],carCols=[0xaa2222,0x2244aa,0xaaaa22,0x888888,0x22aa44,0x884422,0x333333,0xeeeeee];
+zs.forEach((z,i)=>{buildNeighborhoodHouse(-24,z,i);buildNeighborhoodHouse(24,z,i+4);const dl=new THREE.Mesh(new THREE.PlaneGeometry(12,4),sidewalkMat);dl.rotation.x=-Math.PI/2;dl.position.set(-14,.035,z);scene.add(dl);const dr=new THREE.Mesh(new THREE.PlaneGeometry(12,4),sidewalkMat);dr.rotation.x=-Math.PI/2;dr.position.set(14,.035,z);scene.add(dr);buildDrivewayCar(-13,z,carCols[i]);buildDrivewayCar(13,z,carCols[i+4]);});
+const poleMat=mkMat(0x555555);[-35,-21,-7,7,21,35].forEach(z=>{[-5.8,5.8].forEach(x=>{box(.18,4,.18,poleMat,x,2,z);box(.7,.25,.35,mkMat(0xffcc77),x,4.1,z);const pl=new THREE.PointLight(0xffcc77,0,13);pl.position.set(x,4,z);scene.add(pl);streetLights.push(pl);});});
+const fM2=mkMat(0x888888);for(let i=-40;i<40;i+=3){box(.1,1.5,.1,fM2,i,.75,ARENA-1);box(.1,1.5,.1,fM2,i,.75,-ARENA+1);box(.1,1.5,.1,fM2,ARENA-1,.75,i);box(.1,1.5,.1,fM2,-ARENA+1,.75,i);}
+for(let h=.4;h<1.8;h+=.5){box(ARENA*2,.04,.04,fM2,0,h,ARENA-1);box(ARENA*2,.04,.04,fM2,0,h,-ARENA+1);box(.04,.04,ARENA*2,fM2,ARENA-1,h,0);box(.04,.04,ARENA*2,fM2,-ARENA+1,h,0);}
 for(let i=0;i<400;i++){const m=new THREE.Mesh(new THREE.PlaneGeometry(.04,.5),new THREE.MeshBasicMaterial({color:0x8888cc,transparent:true,opacity:.5,side:THREE.DoubleSide}));m.visible=false;scene.add(m);rainDrops.push({mesh:m,active:false});}
 for(let i=0;i<POOL_SIZE;i++){const m=new THREE.Mesh(new THREE.PlaneGeometry(2,2),new THREE.MeshLambertMaterial({color:0x660000}));m.rotation.x=-Math.PI/2;m.position.y=0.02;m.visible=false;scene.add(m);bloodPoolMeshes.push({mesh:m,active:false});}
 for(let i=0;i<POOL_SIZE;i++){const m=new THREE.Mesh(new THREE.SphereGeometry(.1,4,3),new THREE.MeshBasicMaterial());m.visible=false;scene.add(m);particlePool.push({mesh:m,active:false,vel:new THREE.Vector3(),life:0});}
-const wwEl=document.getElementById('weapon-wheel');
-WEAPONS.forEach((w,i)=>{const s=document.createElement('div');s.className='ww-slot';s.innerHTML='<div class="ww-idx">'+(i+1)+'</div>'+w.name;const a=i*(Math.PI*2/7)-Math.PI/2;const r=95;s.style.left=(130+r*Math.cos(a)-36)+'px';s.style.top=(130+r*Math.sin(a)-14)+'px';wwEl.appendChild(s);});
+const wwEl=document.getElementById('weapon-wheel');WEAPONS.forEach((w,i)=>{const s=document.createElement('div');s.className='ww-slot';s.innerHTML='<div class="ww-idx">'+(i+1)+'</div>'+w.name;const a=i*(Math.PI*2/7)-Math.PI/2;const r=95;s.style.left=(130+r*Math.cos(a)-36)+'px';s.style.top=(130+r*Math.sin(a)-14)+'px';wwEl.appendChild(s);});
 }
 
 // LOOT SYSTEM
@@ -543,11 +477,8 @@ function generateLoot(){
       else spawnLoot('upgrade',null,b.x+ox,b.z+oz,0);
     }
   });
-  // Upgrade kits inside houses
-  spawnLoot('upgrade',null,-18-2,-20,0);
-  spawnLoot('upgrade',null,18+2,-20,0);
-  spawnLoot('upgrade',null,-18-2,20,0);
-  spawnLoot('upgrade',null,18+2,20,0);
+  // Upgrade kits inside several neighborhood homes
+  [[-24,-30],[24,-10],[-24,10],[24,30]].forEach(([x,z])=>spawnLoot('upgrade',null,x,z,0));
   // Street loot
   const streetN=8+Math.floor(Math.random()*5);
   for(let i=0;i<streetN;i++){
@@ -1073,6 +1004,7 @@ function updateWeather(dt){
 function updatePlayer(dt){
   isCrouching=!!(keys['ControlLeft']||keys['ControlRight']);
   const stanceHeight=isCrouching?CROUCH_HEIGHT:PLAYER_HEIGHT;
+  houseFloorY+=(getHouseFloorTarget(camera.position.x,camera.position.z)-houseFloorY)*Math.min(1,dt*7);
   const speedMul=(activePowerups.speed&&activePowerups.speed>0)?1.4:1;
   const persistSpeedMul=1+persistentData.upgrades.speed*.15;
   let spd=PLAYER_SPEED*speedMul*persistSpeedMul*dt;
@@ -1123,7 +1055,7 @@ if(windSoundNode)windSoundNode.gain.value=0;
   else if(isGrounded)camera.position.y+=(stanceHeight-camera.position.y)*Math.min(1,dt*8);
   if(!isGrounded){velY-=GRAVITY*dt;jumpOffset=Math.max(-.4,jumpOffset+velY*dt);if(jumpOffset<=0){jumpOffset=0;velY=0;isGrounded=true;}}
   const bob=(moving&&isGrounded)?Math.sin(bobTimer)*(isSprinting?.07:.045):0;
-  const targetY=stanceHeight+jumpOffset+bob;
+  const targetY=stanceHeight+houseFloorY+jumpOffset+bob;
   camera.position.y+=((isGrounded?targetY:targetY)-camera.position.y)*Math.min(1,dt*(isGrounded?10:14));
   // Strafe tilt
   let targetTilt=0;
@@ -1403,7 +1335,7 @@ function startGame(){
   document.getElementById('reload-msg').style.display='none';
   document.getElementById('dmg').style.background='rgba(200,0,0,0)';
   sprintEnergy=100;isSprinting=false;canSprint=true;meleeCooldown=0;meleeLunge=0;scoreBanked=false;autoFireT=0;
-  isCrouching=false;velY=0;jumpOffset=0;isGrounded=true;leanAmt=0;
+  isCrouching=false;velY=0;jumpOffset=0;isGrounded=true;leanAmt=0;houseFloorY=0;
   comboCount=0;comboTimer=0;updateComboDisplay();
   weaponSwapTimer=0;pendingSwapIdx=-1;
   lastFireT=-9999;
