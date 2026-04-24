@@ -298,7 +298,8 @@ const POOL_SIZE=50;
 let particlePool=[],bloodPoolMeshes=[];
 let isCrouching=false,velY=0,jumpOffset=0,isGrounded=true,leanAmt=0;
 const SECOND_FLOOR_Y=3.2;
-const MP_SERVER_URL=new URLSearchParams(location.search).get('server')||localStorage.getItem('dzc_mp_server')||((location.hostname==='localhost'||location.hostname==='127.0.0.1'||location.protocol==='file:')?'ws://localhost:3001':'');
+const DEFAULT_MP_SERVER_URL='wss://zombie-multiplayer-server-gtbt.onrender.com';
+const MP_SERVER_URL=new URLSearchParams(location.search).get('server')||localStorage.getItem('dzc_mp_server')||((location.hostname==='localhost'||location.hostname==='127.0.0.1')?'ws://localhost:3001':DEFAULT_MP_SERVER_URL);
 let multiplayerEnabled=false,mpWs=null,mpRoomCode='',mpPlayerId='',mpLastSend=0,mpStatus='';
 const remotePlayers=new Map();
 
