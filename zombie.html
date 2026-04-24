@@ -303,7 +303,14 @@ const MP_SERVER_URL=new URLSearchParams(location.search).get('server')||localSto
 let multiplayerEnabled=false,mpWs=null,mpRoomCode='',mpPlayerId='',mpLastSend=0,mpStatus='';
 const remotePlayers=new Map();
 
-function loadPersistent(){try{const d=localStorage.getItem('dzc_data');if(d)persistentData=JSON.parse(d);}catch(e){}if(!persistentData)persistentData={scores:[],upgrades:{hp:0,speed:0,grenade:0,dmg:0},availableScore:0};}
+function numOrZero(v){return Number.isFinite(Number(v))?Number(v):0;}
+function getUpgrade(id){return numOrZero(persistentData?.upgrades?.[id]);}
+function normalizePersistentData(data){
+  const d=data&&typeof data==='object'?data:{};
+  const u=d.upgrades&&typeof d.upgrades==='object'?d.upgrades:{};
+  return{scores:Array.isArray(d.scores)?d.scores.filter(Number.isFinite):[],availableScore:numOrZero(d.availableScore),upgrades:{hp:numOrZero(u.hp),speed:numOrZero(u.speed),grenade:numOrZero(u.grenade),dmg:numOrZero(u.dmg)}};
+}
+function loadPersistent(){try{const d=localStorage.getItem('dzc_data');if(d)persistentData=JSON.parse(d);}catch(e){}persistentData=normalizePersistentData(persistentData);savePersistent();}
 function savePersistent(){try{localStorage.setItem('dzc_data',JSON.stringify(persistentData));}catch(e){}}
 loadPersistent();
 
@@ -524,7 +531,7 @@ function updateLoot(dt){
 }
 function collectLoot(l){
   l.collected=true;scene.remove(l.mesh);scene.remove(l.light);
-  if(l.type==='health'){health=Math.min(MAX_HEALTH+persistentData.upgrades.hp*25,health+40);}
+  if(l.type==='health'){health=Math.min(MAX_HEALTH+getUpgrade('hp')*25,health+40);}
   else if(l.type==='ammo'){const wi=weapons.findIndex(w=>w.id===l.sub);if(wi>=0)weapons[wi].reserve+=l.count;}
   else if(l.type==='weapon'){const wi=weapons.findIndex(w=>w.id===l.sub);if(wi>=0){weapons[wi].mag=weapons[wi].maxMag;weapons[wi].reserve+=weapons[wi].maxMag*3;curWeaponIdx=wi;switchWeapon(wi);}}
   else if(l.type==='upgrade'){showUpgradeOverlay();playPowerup();}
@@ -538,7 +545,7 @@ function initWeapons(){
 }
 function getEffectiveDmg(w){
   let d=w.dmg*(1+w.upgrades.dmg*.25);
-  d*=(1+persistentData.upgrades.dmg*.2);
+  d*=(1+getUpgrade('dmg')*.2);
   if(activePowerups.dmg&&activePowerups.dmg>0)d*=2;
   return d;
 }
@@ -1038,12 +1045,18 @@ function updateWeather(dt){
 }
 
 // PLAYER MOVEMENT
+function recoverCameraIfInvalid(){
+  if(Number.isFinite(camera.position.x)&&Number.isFinite(camera.position.y)&&Number.isFinite(camera.position.z)&&Number.isFinite(yaw)&&Number.isFinite(pitch))return;
+  const spawn=getSafeSpawn();
+  camera.position.set(spawn.x,PLAYER_HEIGHT,spawn.z);camera.rotation.set(0,0,0);
+  yaw=0;pitch=0;recoilPitch=0;recoilYaw=0;shakeX=0;shakeY=0;houseFloorY=0;jumpOffset=0;velY=0;isGrounded=true;keys={};
+}
 function updatePlayer(dt){
   isCrouching=!!(keys['ControlLeft']||keys['ControlRight']);
   const stanceHeight=isCrouching?CROUCH_HEIGHT:PLAYER_HEIGHT;
   houseFloorY+=(getHouseFloorTarget(camera.position.x,camera.position.z)-houseFloorY)*Math.min(1,dt*7);
   const speedMul=(activePowerups.speed&&activePowerups.speed>0)?1.4:1;
-  const persistSpeedMul=1+persistentData.upgrades.speed*.15;
+  const persistSpeedMul=1+getUpgrade('speed')*.15;
   let spd=PLAYER_SPEED*speedMul*persistSpeedMul*dt;
   if(isCrouching)spd*=.72;
   const sY=Math.sin(yaw),cY=Math.cos(yaw);
@@ -1150,7 +1163,7 @@ mmCtx.strokeStyle='#2a5a1a';mmCtx.lineWidth=2;mmCtx.strokeRect(0,0,MM,MM);
 // HUD
 function showDmg(){const el=document.getElementById('dmg');el.style.background='rgba(200,0,0,.4)';setTimeout(()=>{el.style.background='rgba(200,0,0,0)';},320);}
 function updateHUD(){
-  const maxHP=MAX_HEALTH+persistentData.upgrades.hp*25;
+  const maxHP=MAX_HEALTH+getUpgrade('hp')*25;
   const pct=(health/maxHP)*100;
   const hf=document.getElementById('health-fill');hf.style.width=pct+'%';
   hf.style.background=health>60?'linear-gradient(to right,#2a6a1a,#5aaa2a)':health>30?'linear-gradient(to right,#7a6a10,#cccc28)':'linear-gradient(to right,#8a1010,#dd2020)';
@@ -1276,11 +1289,11 @@ function showUpgradesScreen(){
   document.getElementById('avail-score').textContent='AVAILABLE: '+persistentData.availableScore;
   const list=document.getElementById('persist-upgrades-list');list.innerHTML='';
   PERSIST_UPGRADES.forEach(u=>{
-    const cur=persistentData.upgrades[u.id];
+    const cur=getUpgrade(u.id);
     const d=document.createElement('div');d.className='pu-buy'+(cur>=u.max?' maxed':'');
     d.textContent=u.name+' ['+cur+'/'+u.max+'] - '+u.cost+' pts';
     d.addEventListener('click',()=>{
-      if(persistentData.upgrades[u.id]>=u.max||persistentData.availableScore<u.cost)return;
+      if(getUpgrade(u.id)>=u.max||persistentData.availableScore<u.cost)return;
       persistentData.availableScore-=u.cost;persistentData.upgrades[u.id]++;
       savePersistent();showUpgradesScreen();
     });
@@ -1414,7 +1427,7 @@ function startGame(){
   document.getElementById('coop-screen').style.display='none';
   document.getElementById('click-resume').style.display='block';
   started=true;gameOver=false;paused=false;pointerLockLost=false;
-  health=MAX_HEALTH+persistentData.upgrades.hp*25;score=0;wave=1;
+  health=MAX_HEALTH+getUpgrade('hp')*25;score=0;wave=1;
   yaw=0;pitch=0;bobTimer=0;dayFactor=0;shakeAmt=0;
   reloading=false;mouseDown=false;lowAmmoBeeped=false;groansT=0;
   isADS=false;currentFOV=HIP_FOV;recoilPitch=0;recoilYaw=0;
@@ -1458,8 +1471,8 @@ function startGame(){
   initWeapons();
   const _si=weapons.findIndex(w=>w.id===selectedWeaponId);
   if(_si>=0){curWeaponIdx=_si;weapons[_si].reserve=Infinity;}
-  weapons[4].mag+=persistentData.upgrades.grenade;
-  weapons[4].maxMag+=persistentData.upgrades.grenade;
+  weapons[4].mag+=getUpgrade('grenade');
+  weapons[4].maxMag+=getUpgrade('grenade');
   updateGunModel();generateLoot();updateHUD();
   startAmbient();getAudio();startRainSound();startWindSound();
   waveState='transition';
@@ -1507,7 +1520,7 @@ function animate(){
       w.mag+=take;if(w.reserve!==Infinity)w.reserve-=take;
       reloading=false;document.getElementById('reload-msg').style.display='none';updateHUD();
     }
-    updatePlayer(dt);updateZombies(dt);updateGrenades(dt);updateParticles(dt);
+    updatePlayer(dt);recoverCameraIfInvalid();updateZombies(dt);updateGrenades(dt);updateParticles(dt);
     updateLoot(dt);updateDayNight(dt);updateShake(dt);updateGunEffects(dt);updateADS(dt);updateRecoil(dt);
     updateBossProjectiles(dt);updatePowerupDrops(dt);updateActivePowerups(dt);
     updateBarricades(dt);updateWeather(dt);updateWaveSpawning();
