@@ -2,3 +2,4 @@
 .playwright/
 .playwright-mcp/
 game-verification.png
+server/node_modules/
