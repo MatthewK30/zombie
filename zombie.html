@@ -342,26 +342,26 @@ renderer.setPixelRatio(Math.min(devicePixelRatio,2));
 renderer.setSize(innerWidth,innerHeight);
 renderer.shadowMap.enabled=true;
 renderer.shadowMap.type=THREE.PCFSoftShadowMap;
-renderer.setClearColor(0xd4764a);
+renderer.setClearColor(0xbf6840);
 document.body.appendChild(renderer.domElement);
 scene=new THREE.Scene();
-scene.fog=new THREE.Fog(0xc4764a,20,110);
+scene.fog=new THREE.Fog(0xbf6840,24,125);
 camera=new THREE.PerspectiveCamera(72,innerWidth/innerHeight,.08,200);
 camera.rotation.order='YXZ';
 camera.position.set(SPAWN_X,PLAYER_HEIGHT,SPAWN_Z);
 const clock=new THREE.Clock();
-const ambientLight=new THREE.AmbientLight(0xffd4a0,.55);
+const ambientLight=new THREE.AmbientLight(0xffc48a,.48);
 scene.add(ambientLight);
-const sunLight=new THREE.DirectionalLight(0xffa040,1.4);
-sunLight.position.set(-60,12,0);
+const sunLight=new THREE.DirectionalLight(0xffa85a,1.65);
+sunLight.position.set(-60,18,-24);
 sunLight.castShadow=true;
 sunLight.shadow.mapSize.set(2048,2048);
 sunLight.shadow.camera.near=1;sunLight.shadow.camera.far=200;
 sunLight.shadow.camera.left=-80;sunLight.shadow.camera.right=80;
 sunLight.shadow.camera.top=80;sunLight.shadow.camera.bottom=-80;
 scene.add(sunLight);
-const sunFill=new THREE.DirectionalLight(0xff8866,.3);
-sunFill.position.set(40,8,0);
+const sunFill=new THREE.DirectionalLight(0x7aa0ff,.22);
+sunFill.position.set(38,10,28);
 scene.add(sunFill);
 const shootLight=new THREE.PointLight(0xffcc44,0,7);
 shootLight.position.set(.18,-.15,-.5);
@@ -372,13 +372,13 @@ const raycaster=new THREE.Raycaster();
 
 // TEXTURES
 function mkTex(fn,w,h,rx,ry){w=w||512;h=h||512;rx=rx||1;ry=ry||1;const c=document.createElement('canvas');c.width=w;c.height=h;fn(c.getContext('2d'),w,h);const t=new THREE.CanvasTexture(c);t.wrapS=t.wrapT=THREE.RepeatWrapping;t.repeat.set(rx,ry);return t;}
-const asphaltTex=mkTex((ctx,w,h)=>{ctx.fillStyle='#2a2a2a';ctx.fillRect(0,0,w,h);for(let i=0;i<300;i++){const v=30+Math.random()*15|0;ctx.fillStyle='rgb('+v+','+v+','+v+')';const s=2+Math.random()*6;ctx.fillRect(Math.random()*w,Math.random()*h,s,s);}},512,512,12,12);
-const sidewalkTex=mkTex((ctx,w,h)=>{ctx.fillStyle='#aaaaaa';ctx.fillRect(0,0,w,h);ctx.strokeStyle='#999';ctx.lineWidth=2;for(let x=0;x<w;x+=64){ctx.beginPath();ctx.moveTo(x,0);ctx.lineTo(x,h);ctx.stroke();}for(let y=0;y<h;y+=64){ctx.beginPath();ctx.moveTo(0,y);ctx.lineTo(w,y);ctx.stroke();}},256,256,12,12);
-const grassTex=mkTex((ctx,w,h)=>{ctx.fillStyle='#4a8a2a';ctx.fillRect(0,0,w,h);for(let i=0;i<600;i++){const g=50+Math.random()*40|0;ctx.fillStyle='rgb('+(30+Math.random()*30)+','+g+','+(10+Math.random()*20)+')';ctx.fillRect(Math.random()*w,Math.random()*h,2+Math.random()*3,2+Math.random()*3);}},256,256,8,8);
-const wallTexYellow=mkTex((ctx,w,h)=>{ctx.fillStyle='#d4b040';ctx.fillRect(0,0,w,h);for(let i=0;i<80;i++){ctx.fillStyle='rgba(180,160,50,'+(Math.random()*.2)+')';ctx.fillRect(Math.random()*w,Math.random()*h,2+Math.random()*8,2+Math.random()*8);}},128,128,1,1);
-const wallTexRed=mkTex((ctx,w,h)=>{ctx.fillStyle='#b83838';ctx.fillRect(0,0,w,h);for(let i=0;i<80;i++){ctx.fillStyle='rgba(160,40,40,'+(Math.random()*.2)+')';ctx.fillRect(Math.random()*w,Math.random()*h,2+Math.random()*8,2+Math.random()*8);}},128,128,1,1);
-const floorTex=mkTex((ctx,w,h)=>{ctx.fillStyle='#8a7a60';ctx.fillRect(0,0,w,h);for(let i=0;i<200;i++){ctx.fillStyle='rgba(120,100,70,'+(Math.random()*.15)+')';ctx.fillRect(Math.random()*w,Math.random()*h,4+Math.random()*8,4+Math.random()*8);}},128,128,1,1);
-const roofTex=mkTex((ctx,w,h)=>{ctx.fillStyle='#5a3a2a';ctx.fillRect(0,0,w,h);for(let i=0;i<150;i++){ctx.fillStyle='rgba(80,50,35,'+(Math.random()*.2)+')';ctx.fillRect(Math.random()*w,Math.random()*h,4+Math.random()*6,2+Math.random()*3);}},128,128,1,1);
+const asphaltTex=mkTex((ctx,w,h)=>{const g=ctx.createLinearGradient(0,0,w,h);g.addColorStop(0,'#303133');g.addColorStop(1,'#1c1d1f');ctx.fillStyle=g;ctx.fillRect(0,0,w,h);for(let i=0;i<900;i++){const v=22+Math.random()*42|0;ctx.fillStyle='rgba('+v+','+v+','+v+','+(.18+Math.random()*.5)+')';const s=.8+Math.random()*4.2;ctx.fillRect(Math.random()*w,Math.random()*h,s,s);}for(let i=0;i<18;i++){ctx.strokeStyle='rgba(85,85,85,.28)';ctx.lineWidth=.6+Math.random()*1.8;ctx.beginPath();const x=Math.random()*w;ctx.moveTo(x,0);ctx.lineTo(x+Math.random()*70-35,h);ctx.stroke();}},512,512,12,12);
+const sidewalkTex=mkTex((ctx,w,h)=>{ctx.fillStyle='#aaa79f';ctx.fillRect(0,0,w,h);for(let i=0;i<320;i++){const v=125+Math.random()*70|0;ctx.fillStyle='rgba('+v+','+v+','+(v-8)+',.17)';ctx.fillRect(Math.random()*w,Math.random()*h,1+Math.random()*9,1+Math.random()*9);}ctx.strokeStyle='rgba(95,92,86,.72)';ctx.lineWidth=2;for(let x=0;x<w;x+=64){ctx.beginPath();ctx.moveTo(x,0);ctx.lineTo(x,h);ctx.stroke();}for(let y=0;y<h;y+=64){ctx.beginPath();ctx.moveTo(0,y);ctx.lineTo(w,y);ctx.stroke();}},256,256,12,12);
+const grassTex=mkTex((ctx,w,h)=>{const g=ctx.createLinearGradient(0,0,w,h);g.addColorStop(0,'#5d8432');g.addColorStop(1,'#304e1d');ctx.fillStyle=g;ctx.fillRect(0,0,w,h);for(let i=0;i<1600;i++){const green=55+Math.random()*80|0;ctx.fillStyle='rgba('+(22+Math.random()*28|0)+','+green+','+(8+Math.random()*22|0)+','+(.24+Math.random()*.48)+')';ctx.fillRect(Math.random()*w,Math.random()*h,.8+Math.random()*2.4,2+Math.random()*6);}for(let i=0;i<70;i++){ctx.fillStyle='rgba(120,98,50,.12)';ctx.beginPath();ctx.arc(Math.random()*w,Math.random()*h,3+Math.random()*9,0,Math.PI*2);ctx.fill();}},256,256,8,8);
+const wallTexYellow=mkTex((ctx,w,h)=>{ctx.fillStyle='#caa365';ctx.fillRect(0,0,w,h);for(let y=0;y<h;y+=14){ctx.fillStyle='rgba(255,245,210,.09)';ctx.fillRect(0,y,w,2);ctx.fillStyle='rgba(95,70,38,.14)';ctx.fillRect(0,y+12,w,1);}for(let i=0;i<230;i++){ctx.fillStyle='rgba(110,80,42,'+(.04+Math.random()*.11)+')';ctx.fillRect(Math.random()*w,Math.random()*h,3+Math.random()*14,1+Math.random()*3);}},128,128,1,1);
+const wallTexRed=mkTex((ctx,w,h)=>{ctx.fillStyle='#9f4a42';ctx.fillRect(0,0,w,h);for(let y=0;y<h;y+=14){ctx.fillStyle='rgba(255,225,205,.06)';ctx.fillRect(0,y,w,2);ctx.fillStyle='rgba(55,24,20,.18)';ctx.fillRect(0,y+12,w,1);}for(let i=0;i<230;i++){ctx.fillStyle='rgba(65,25,20,'+(.05+Math.random()*.12)+')';ctx.fillRect(Math.random()*w,Math.random()*h,3+Math.random()*14,1+Math.random()*3);}},128,128,1,1);
+const floorTex=mkTex((ctx,w,h)=>{ctx.fillStyle='#876847';ctx.fillRect(0,0,w,h);for(let x=0;x<w;x+=16){ctx.fillStyle='rgba(48,30,16,.24)';ctx.fillRect(x,0,1,h);ctx.fillStyle='rgba(180,135,80,.08)';ctx.fillRect(x+2,0,1,h);}for(let i=0;i<280;i++){ctx.fillStyle='rgba(120,84,48,'+(.08+Math.random()*.16)+')';ctx.fillRect(Math.random()*w,Math.random()*h,5+Math.random()*18,1+Math.random()*5);}},128,128,2,2);
+const roofTex=mkTex((ctx,w,h)=>{ctx.fillStyle='#4a3d34';ctx.fillRect(0,0,w,h);for(let y=0;y<h;y+=10){ctx.fillStyle='rgba(22,18,16,.34)';ctx.fillRect(0,y,w,2);for(let x=((y/10)%2)*10;x<w;x+=20){ctx.fillStyle='rgba(95,80,70,.34)';ctx.fillRect(x,y+2,13,6);}}for(let i=0;i<90;i++){ctx.fillStyle='rgba(15,12,10,.16)';ctx.fillRect(Math.random()*w,Math.random()*h,3+Math.random()*10,1+Math.random()*3);}},128,128,2,2);
 const fenceTex=mkTex((ctx,w,h)=>{ctx.fillStyle='#ffffff';ctx.fillRect(0,0,w,h);ctx.fillStyle='#e8e8e8';for(let y=0;y<h;y+=12){ctx.fillRect(0,y,w,2);}ctx.fillStyle='#ddd';for(let x=0;x<w;x+=6){ctx.fillRect(x,0,1,h);}},32,32,1,1);
 
 // WORLD HELPERS
@@ -1010,7 +1010,7 @@ function updateWeather(dt){
       nextLightningTime=gameTime+8+Math.random()*12;
       ambientLight.intensity=2;document.getElementById('lightning-flash').style.background='rgba(200,200,255,.5)';
       playThunder();
-      setTimeout(()=>{ambientLight.intensity=.7-dayFactor*.45;document.getElementById('lightning-flash').style.background='rgba(200,200,255,0)';},120);
+      setTimeout(()=>{ambientLight.intensity=.48-dayFactor*.26;document.getElementById('lightning-flash').style.background='rgba(200,200,255,0)';},120);
     }
   }
 }
@@ -1099,16 +1099,16 @@ if(windSoundNode)windSoundNode.gain.value=0;
 }
 
 // DAY/NIGHT
-const C_DAY=new THREE.Color(0xd4764a),C_NIGHT=new THREE.Color(0x05080f);
-const C_ADAY=new THREE.Color(0xffd4a0),C_ANIGHT=new THREE.Color(0x1a2244);
+const C_DAY=new THREE.Color(0xbf6840),C_NIGHT=new THREE.Color(0x05080f);
+const C_ADAY=new THREE.Color(0xffc48a),C_ANIGHT=new THREE.Color(0x182344);
 const tmpCol=new THREE.Color();
 function updateDayNight(dt){
 const target=Math.min(1,(wave-1)*.08);
 dayFactor+=(target-dayFactor)*dt*.3;
 tmpCol.copy(C_DAY).lerp(C_NIGHT,dayFactor);scene.fog.color.copy(tmpCol);renderer.setClearColor(tmpCol);
-ambientLight.color.copy(C_ADAY).lerp(C_ANIGHT,dayFactor);ambientLight.intensity=.55-dayFactor*.35;
-sunLight.intensity=1.4-dayFactor*1;sunFill.intensity=.3-dayFactor*.2;
-streetLights.forEach(l=>{l.intensity=dayFactor*3;});
+ambientLight.color.copy(C_ADAY).lerp(C_ANIGHT,dayFactor);ambientLight.intensity=.48-dayFactor*.26;
+sunLight.intensity=1.65-dayFactor*1.15;sunFill.intensity=.22-dayFactor*.1;
+streetLights.forEach(l=>{l.intensity=dayFactor*3.4;});
 clouds.forEach(c=>{c.group.position.x+=dt*c.speed;if(c.group.position.x>180)c.group.position.x=-180;
 c.group.children.forEach(ch=>{ch.material.color.setHex(dayFactor<.5?0xff8866:0x888888);});
 });
