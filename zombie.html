@@ -11,6 +11,10 @@ body > canvas{position:fixed;top:0;left:0;z-index:0;display:block;}
 #crosshair{position:fixed;top:50%;left:50%;width:20px;height:20px;transform:translate(-50%,-50%);}
 #crosshair::before{content:'';position:absolute;top:50%;left:0;right:0;height:2px;background:rgba(130,220,70,.85);transform:translateY(-50%);}
 #crosshair::after{content:'';position:absolute;left:50%;top:0;bottom:0;width:2px;background:rgba(130,220,70,.85);transform:translateX(-50%);}
+#hit-marker{position:fixed;top:50%;left:50%;width:34px;height:34px;transform:translate(-50%,-50%) scale(.8);opacity:0;transition:opacity .08s,transform .08s;pointer-events:none;z-index:13;}
+#hit-marker::before,#hit-marker::after{content:'';position:absolute;left:50%;top:50%;width:2px;height:34px;background:#f4fff0;box-shadow:0 0 8px #9cff6a;}
+#hit-marker::before{transform:translate(-50%,-50%) rotate(45deg);}#hit-marker::after{transform:translate(-50%,-50%) rotate(-45deg);}
+#hit-marker.active{opacity:.95;transform:translate(-50%,-50%) scale(1.05);}
 #health-wrap{position:fixed;bottom:30px;left:20px;width:200px;}
 #health-label{font-size:10px;letter-spacing:3px;color:#4a8a2a;margin-bottom:4px;}
 #health-track{width:200px;height:12px;background:#0a180a;border:1px solid #2a4a1a;}
@@ -110,6 +114,7 @@ body > canvas{position:fixed;top:0;left:0;z-index:0;display:block;}
 <body>
 <div id="hud">
   <div id="crosshair"></div>
+  <div id="hit-marker"></div>
   <div id="click-resume" style="display:none;position:fixed;top:50%;left:50%;transform:translate(-50%,-50%);background:rgba(0,0,0,.85);color:#8adc46;font-family:'Press Start 2P',monospace;font-size:18px;padding:24px 36px;border:2px solid #8adc46;border-radius:8px;z-index:15;text-align:center;pointer-events:none;">CLICK TO RESUME</div>
   <div id="health-wrap"><div id="health-label">HEALTH</div><div id="health-track"><div id="health-fill"></div></div></div>
   <div id="stamina-wrap"><div id="stamina-label">STAMINA</div><div id="stamina-track"><div id="stamina-fill" style="width:100%"></div></div></div>
@@ -230,6 +235,7 @@ const ZDEFS={
   boss:{hp:1200,speed:.9,dmg:45,dmgCD:1500,col:0x8a1010,dark:0x5a0808,sz:2.2,score:1000},
 };
 const RECOIL={pistol:{p:.042,y:.008},shotgun:{p:.085,y:.013},ak47:{p:.030,y:.013},sniper:{p:.115,y:.004},grenade:{p:0,y:0},m4a1:{p:.027,y:.011},smg:{p:.016,y:.007}};
+const WEAPON_SHAKE={pistol:.08,shotgun:.22,ak47:.095,sniper:.28,grenade:.16,m4a1:.085,smg:.06};
 const WAVE_MSGS=['','WAVE 1 - SURVIVE!','WAVE 2 - HUNGRY','WAVE 3 - RUNNERS INCOMING','WAVE 4 - THE BIG ONE','WAVE 5 - ALL UNITS','WAVE 6 - DARKNESS FALLS'];
 const BUILDINGS=[
   {name:'West House 1',x:-24,z:-30,w:12,d:11},{name:'East House 1',x:24,z:-30,w:12,d:11},
@@ -293,6 +299,7 @@ let casings=[];
 let nextSpawnGameTime=0,waveTransitionTime=0,waveState='idle';
 let strafeTilt=0;
 let muzzleFlashTimer=0,muzzleFlashSprite=null;
+let moveVX=0,moveVZ=0,landT=0,hitMarkerT=0;
 let persistentData=null;
 const POOL_SIZE=50;
 let particlePool=[],bloodPoolMeshes=[];
@@ -646,8 +653,9 @@ function switchWeapon(idx){
 }
 let flashT=0,recoilT=0;
 function doMuzzleFlash(){
-  document.getElementById('flash').style.background='rgba(255,210,80,.28)';
-  shootLight.intensity=4;flashT=.09;
+  const w=weapons[curWeaponIdx];
+  document.getElementById('flash').style.background=w.id==='sniper'?'rgba(255,235,150,.34)':w.id==='shotgun'?'rgba(255,205,85,.36)':'rgba(255,210,80,.28)';
+  shootLight.intensity=w.id==='shotgun'?6:w.id==='sniper'?7:4;flashT=(w.id==='shotgun'||w.id==='sniper') ? .12 : .09;
   if(muzzleFlashSprite){muzzleFlashSprite.visible=true;muzzleFlashTimer=.06;}
 }
 function updateGunEffects(dt){
@@ -669,12 +677,14 @@ function updateGunEffects(dt){
   const crouchShift=isCrouching?.025:0;
   const lunge=meleeLunge>0?meleeLunge*.3:0;
   const recoilKick=recoilT>0?.04*(1-recoilT):0;
-  gunGroup.position.x+=(basePos[0]+leanShift-gunGroup.position.x)*Math.min(1,dt*16);
-  gunGroup.position.y+=(basePos[1]-drop-crouchShift-gunGroup.position.y)*Math.min(1,dt*16);
+  const mv=Math.min(1,Math.hypot(moveVX,moveVZ)/(PLAYER_SPEED*1.5));
+  const bobX=Math.sin(bobTimer*.5)*.015*mv,bobY=Math.abs(Math.cos(bobTimer))*.025*mv+(landT>0 ? .045*Math.sin((landT/.18)*Math.PI) : 0);
+  gunGroup.position.x+=(basePos[0]+leanShift+bobX-gunGroup.position.x)*Math.min(1,dt*16);
+  gunGroup.position.y+=(basePos[1]-drop-crouchShift-bobY-gunGroup.position.y)*Math.min(1,dt*16);
   gunGroup.position.z+=(basePos[2]-lunge-recoilKick-gunGroup.position.z)*Math.min(1,dt*16);
-  gunGroup.rotation.x+=(baseRot[0]-gunGroup.rotation.x)*Math.min(1,dt*16);
-  gunGroup.rotation.y+=(baseRot[1]-leanAmt*.05-gunGroup.rotation.y)*Math.min(1,dt*16);
-  gunGroup.rotation.z+=(baseRot[2]-leanAmt*.08-gunGroup.rotation.z)*Math.min(1,dt*16);
+  gunGroup.rotation.x+=(baseRot[0]-gunGroup.rotation.x+bobY*.28)*Math.min(1,dt*16);
+  gunGroup.rotation.y+=(baseRot[1]-leanAmt*.05-gunGroup.rotation.y+bobX*.5)*Math.min(1,dt*16);
+  gunGroup.rotation.z+=(baseRot[2]-leanAmt*.08-gunGroup.rotation.z+Math.sin(bobTimer)*.03*mv)*Math.min(1,dt*16);
   if(recoilT>0)recoilT=Math.max(0,recoilT-dt*6);
   if(flashT>0){flashT-=dt;if(flashT<=0){document.getElementById('flash').style.background='rgba(255,210,80,0)';shootLight.intensity=0;}}
   if(muzzleFlashTimer>0){muzzleFlashTimer-=dt;if(muzzleFlashTimer<=0&&muzzleFlashSprite)muzzleFlashSprite.visible=false;}
@@ -692,7 +702,7 @@ function fireWeapon(){
   if(w.id==='grenade'){if(w.mag<=0){playBeep();return;}w.mag--;lastFireT=now;updateHUD();throwGrenade();return;}
   if(w.mag<=0){playBeep();if(w.reserve>0&&!reloading)startReload();return;}
   w.mag--;lastFireT=now;recoilT=1;
-  playShot(w.id);doMuzzleFlash();applyRecoil();updateHUD();
+  playShot(w.id);doMuzzleFlash();applyRecoil();shakeAmt=Math.max(shakeAmt,WEAPON_SHAKE[w.id]||.06);updateHUD();
   spawnCasing();
   const edmg=getEffectiveDmg(w);
   const espread=getEffectiveSpread(w);
@@ -710,7 +720,7 @@ function fireWeapon(){
           dmg*=zb.type==='boss'?1.3:2;
           playHeadshot();
         }
-        zb.health-=dmg;zb.hitT=.22;
+        zb.health-=dmg;zb.hitT=.22;zb.staggerT=Math.max(zb.staggerT||0,isHeadshot ? .28 : .16);showHitMarker(isHeadshot);
         addBlood(hits[0].point,zb.type);
         spawnDamageNumber(hits[0].point,dmg,isHeadshot);
         if(isHeadshot&&Math.random()<.3)spawnBloodPool(hits[0].point,.5+Math.random()*.5);
@@ -737,7 +747,7 @@ function doMelee(){
   const hits=raycaster.intersectObjects(meshes);
   if(hits.length&&hits[0].distance<2.8){
     const zb=hits[0].object.userData.zombie;
-    if(zb&&!zb.dead){let dmg=55;if(activePowerups['2xdmg']&&activePowerups['2xdmg']>0)dmg*=2;zb.health-=dmg;zb.hitT=.22;addBlood(hits[0].point,zb.type);spawnDamageNumber(hits[0].point,dmg,false);if(zb.health<=0)killZombie(zb,false);}
+    if(zb&&!zb.dead){let dmg=55;if(activePowerups['2xdmg']&&activePowerups['2xdmg']>0)dmg*=2;zb.health-=dmg;zb.hitT=.22;zb.staggerT=Math.max(zb.staggerT||0,.34);shakeAmt=Math.max(shakeAmt,.16);showHitMarker(false);addBlood(hits[0].point,zb.type);spawnDamageNumber(hits[0].point,dmg,false);if(zb.health<=0)killZombie(zb,false);}
   }
 }
 
@@ -850,7 +860,7 @@ function createZombie(typeKey){
   sx=Math.max(-ARENA+3,Math.min(ARENA-3,sx));sz2=Math.max(-ARENA+3,Math.min(ARENA-3,sz2));
   group.position.set(sx,0,sz2);
   const hp=Math.floor(def.hp*getWaveHealthMul());
-  const zb={group,type:typeKey||'regular',health:hp,maxHealth:hp,dead:false,sinking:false,sinkT:0,walkT:0,hitT:0,bodyMat,darkMat,dmgCD:def.dmgCD,lastDmgT:0,avoidTimer:0,avoidDir:0,lastFireT:0,lastX:sx,lastZ:sz2,stuckT:0,detourTimer:0,detourX:0,detourZ:0,speedMul:getWaveSpeedMul(),dmgMul:getWaveDamageMul()};
+  const zb={group,type:typeKey||'regular',health:hp,maxHealth:hp,dead:false,sinking:false,sinkT:0,walkT:0,hitT:0,staggerT:0,bodyMat,darkMat,dmgCD:def.dmgCD,lastDmgT:0,avoidTimer:0,avoidDir:0,lastFireT:0,lastX:sx,lastZ:sz2,stuckT:0,detourTimer:0,detourX:0,detourZ:0,speedMul:getWaveSpeedMul(),dmgMul:getWaveDamageMul()};
   group.children.forEach(c=>c.userData.zombie=zb);
   scene.add(group);zombies.push(zb);
   if(typeKey==='boss')activeBoss=zb;
@@ -893,6 +903,7 @@ function updateZombies(dt){
     const dx=px-z.group.position.x,dz=pz-z.group.position.z;
     const dist=Math.sqrt(dx*dx+dz*dz);
     const def=ZDEFS[z.type];
+    if(z.staggerT>0)z.staggerT=Math.max(0,z.staggerT-dt);
     const moved=Math.hypot(z.group.position.x-z.lastX,z.group.position.z-z.lastZ);
     z.stuckT=moved<.025?z.stuckT+dt:0;z.lastX=z.group.position.x;z.lastZ=z.group.position.z;
     if(z.stuckT>.45){const a=chooseZombieDetour(z,def,px,pz);z.detourX=Math.cos(a);z.detourZ=Math.sin(a);z.detourTimer=.9;z.stuckT=0;}
@@ -921,7 +932,7 @@ function updateZombies(dt){
     }
     if(!attackingBarricade){
       if(dist>1.1*def.sz){
-        const spd=def.speed*z.speedMul*dt;
+        const spd=def.speed*z.speedMul*(z.staggerT>0 ? .38 : 1)*dt;
         let nx=z.group.position.x+moveX*spd,nz=z.group.position.z+moveZ*spd;
         let blocked=zombieBlockedAt(nx,nz,def,.3);
         if(!blocked){z.group.position.x=nx;z.group.position.z=nz;}
@@ -1088,7 +1099,7 @@ function recoverCameraIfInvalid(){
   if(Number.isFinite(camera.position.x)&&Number.isFinite(camera.position.y)&&Number.isFinite(camera.position.z)&&Number.isFinite(yaw)&&Number.isFinite(pitch))return;
   const spawn=getSafeSpawn();
   camera.position.set(spawn.x,PLAYER_HEIGHT,spawn.z);camera.rotation.set(0,0,0);
-  yaw=0;pitch=0;recoilPitch=0;recoilYaw=0;shakeX=0;shakeY=0;houseFloorY=0;jumpOffset=0;velY=0;isGrounded=true;keys={};
+  yaw=0;pitch=0;recoilPitch=0;recoilYaw=0;shakeX=0;shakeY=0;houseFloorY=0;jumpOffset=0;velY=0;moveVX=0;moveVZ=0;isGrounded=true;keys={};
 }
 function updatePlayer(dt){
   isCrouching=!!(keys['ControlLeft']||keys['ControlRight']);
@@ -1096,7 +1107,7 @@ function updatePlayer(dt){
   houseFloorY+=(getHouseFloorTarget(camera.position.x,camera.position.z)-houseFloorY)*Math.min(1,dt*7);
   const speedMul=(activePowerups.speed&&activePowerups.speed>0)?1.4:1;
   const persistSpeedMul=1+getUpgrade('speed')*.15;
-  let spd=PLAYER_SPEED*speedMul*persistSpeedMul*dt;
+  let spd=PLAYER_SPEED*speedMul*persistSpeedMul;
   if(isCrouching)spd*=.72;
   const sY=Math.sin(yaw),cY=Math.cos(yaw);
   let mx=0,mz=0;
@@ -1119,32 +1130,39 @@ if(windSoundNode)windSoundNode.gain.value=0;
   document.getElementById('stamina-fill').style.width=sprintEnergy+'%';
   document.getElementById('stamina-fill').style.background=sprintEnergy<30?'linear-gradient(to right,#8a4a10,#ccaa20)':'linear-gradient(to right,#2a4a8a,#5a8aaa)';
   document.getElementById('sprint-vignette').style.opacity=isSprinting?.3:0;
-  const moving=mx!==0||mz!==0;
+  const inputMoving=mx!==0||mz!==0;
+  let targetVX=0,targetVZ=0;
+  if(inputMoving){const len=Math.sqrt(mx*mx+mz*mz);targetVX=mx/len*spd;targetVZ=mz/len*spd;}
+  const accel=inputMoving?(isSprinting?13:10):(isGrounded?15:4);
+  moveVX+=(targetVX-moveVX)*Math.min(1,dt*accel);moveVZ+=(targetVZ-moveVZ)*Math.min(1,dt*accel);
+  const curMoveSpeed=Math.hypot(moveVX,moveVZ),moving=curMoveSpeed>.08;
   if(moving){
-    const len=Math.sqrt(mx*mx+mz*mz);mx=(mx/len)*spd;mz=(mz/len)*spd;
-    let nx=camera.position.x+mx,nz=camera.position.z+mz;
+    const stepX=moveVX*dt,stepZ=moveVZ*dt;
+    let nx=camera.position.x+stepX,nz=camera.position.z+stepZ;
     const cx=camera.position.x,cz=camera.position.z,PR=PLAYER_RADIUS;
     // Push barricade
     if(pushTarget&&!pushTarget.destroyed){
       const bdx=pushTarget.px-cx,bdz=pushTarget.pz-cz;
       const bDist=Math.sqrt(bdx*bdx+bdz*bdz);
       if(bDist<2){
-        const pushSpd=spd*.4;const pDx=bdx/bDist,pDz=bdz/bDist;
+        const pushSpd=curMoveSpeed*dt*.4;const pDx=bdx/bDist,pDz=bdz/bDist;
         let npx=pushTarget.px+pDx*pushSpd,npz=pushTarget.pz+pDz*pushSpd;
         npx=Math.max(-ARENA+1,Math.min(ARENA-1,npx));npz=Math.max(-ARENA+1,Math.min(ARENA-1,npz));
         pushTarget.px=npx;pushTarget.pz=npz;pushTarget.mesh.position.x=npx;pushTarget.mesh.position.z=npz;
         obstacles[pushTarget.obsIdx].px=npx;obstacles[pushTarget.obsIdx].pz=npz;
       }
     }
-    obstacles.forEach(o=>{if(Math.abs(nx-o.px)<o.hx+PR&&Math.abs(cz-o.pz)<o.hz+PR)nx=cx;if(Math.abs(cx-o.px)<o.hx+PR&&Math.abs(nz-o.pz)<o.hz+PR)nz=cz;});
+    obstacles.forEach(o=>{if(Math.abs(nx-o.px)<o.hx+PR&&Math.abs(cz-o.pz)<o.hz+PR){nx=cx;moveVX=0;}if(Math.abs(cx-o.px)<o.hx+PR&&Math.abs(nz-o.pz)<o.hz+PR){nz=cz;moveVZ=0;}});
     nx=Math.max(-ARENA+1,Math.min(ARENA-1,nx));nz=Math.max(-ARENA+1,Math.min(ARENA-1,nz));
     camera.position.x=nx;camera.position.z=nz;
-    if(isGrounded)bobTimer+=dt*(isSprinting?12:8);
+    if(isGrounded)bobTimer+=dt*(isSprinting?14:8.5)*(Math.min(1,curMoveSpeed/(PLAYER_SPEED*1.5))+.35);
   }
   else if(isGrounded)camera.position.y+=(stanceHeight-camera.position.y)*Math.min(1,dt*8);
-  if(!isGrounded){velY-=GRAVITY*dt;jumpOffset=Math.max(-.4,jumpOffset+velY*dt);if(jumpOffset<=0){jumpOffset=0;velY=0;isGrounded=true;}}
-  const bob=(moving&&isGrounded)?Math.sin(bobTimer)*(isSprinting?.07:.045):0;
-  const targetY=stanceHeight+houseFloorY+jumpOffset+bob;
+  if(!isGrounded){velY-=GRAVITY*dt;jumpOffset=Math.max(-.4,jumpOffset+velY*dt);if(jumpOffset<=0){const impact=Math.min(1,Math.abs(velY)/7);jumpOffset=0;velY=0;isGrounded=true;landT=.18*impact;shakeAmt=Math.max(shakeAmt,.08*impact);}}
+  if(landT>0)landT=Math.max(0,landT-dt);
+  const bob=(moving&&isGrounded)?Math.sin(bobTimer)*(isSprinting?.085:.048)*(Math.min(1,curMoveSpeed/(PLAYER_SPEED*1.4))):0;
+  const landDrop=landT>0?Math.sin((landT/.18)*Math.PI)*.08:0;
+  const targetY=stanceHeight+houseFloorY+jumpOffset+bob-landDrop;
   camera.position.y+=((isGrounded?targetY:targetY)-camera.position.y)*Math.min(1,dt*(isGrounded?10:14));
   // Strafe tilt
   let targetTilt=0;
@@ -1201,6 +1219,8 @@ mmCtx.strokeStyle='#2a5a1a';mmCtx.lineWidth=2;mmCtx.strokeRect(0,0,MM,MM);
 
 // HUD
 function showDmg(){const el=document.getElementById('dmg');el.style.background='rgba(200,0,0,.4)';setTimeout(()=>{el.style.background='rgba(200,0,0,0)';},320);}
+function showHitMarker(headshot){const el=document.getElementById('hit-marker');el.classList.add('active');el.style.filter=headshot?'sepia(1) saturate(4) hue-rotate(5deg)':'none';hitMarkerT=.09;}
+function updateHitMarker(dt){if(hitMarkerT>0){hitMarkerT-=dt;if(hitMarkerT<=0)document.getElementById('hit-marker').classList.remove('active');}}
 function updateHUD(){
   const maxHP=MAX_HEALTH+getUpgrade('hp')*25;
   const pct=(health/maxHP)*100;
@@ -1474,9 +1494,10 @@ function startGame(){
   document.getElementById('ads-overlay').style.display='none';document.getElementById('crosshair').style.display='block';
   reloading=false;reloadEndTime=0;
   document.getElementById('reload-msg').style.display='none';
+  document.getElementById('hit-marker').classList.remove('active');
   document.getElementById('dmg').style.background='rgba(200,0,0,0)';
   sprintEnergy=100;isSprinting=false;canSprint=true;meleeCooldown=0;meleeLunge=0;scoreBanked=false;autoFireT=0;
-  isCrouching=false;velY=0;jumpOffset=0;isGrounded=true;leanAmt=0;houseFloorY=0;
+  isCrouching=false;velY=0;jumpOffset=0;isGrounded=true;leanAmt=0;houseFloorY=0;moveVX=0;moveVZ=0;landT=0;hitMarkerT=0;
   comboCount=0;comboTimer=0;updateComboDisplay();
   weaponSwapTimer=0;pendingSwapIdx=-1;
   lastFireT=-9999;
@@ -1563,7 +1584,7 @@ function animate(){
     updateLoot(dt);updateDayNight(dt);updateShake(dt);updateGunEffects(dt);updateADS(dt);updateRecoil(dt);
     updateBossProjectiles(dt);updatePowerupDrops(dt);updateActivePowerups(dt);
     updateBarricades(dt);updateWeather(dt);updateWaveSpawning();
-    updateDamageNumbers();updateKillFeed();updateDamageArrows(dt);updateCasings(dt);
+    updateDamageNumbers();updateKillFeed();updateDamageArrows(dt);updateHitMarker(dt);updateCasings(dt);
     sendMpState();
     updatePowerupHUD();
   }
