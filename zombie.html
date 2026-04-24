@@ -145,7 +145,20 @@ body > canvas{position:fixed;top:0;left:0;z-index:0;display:block;}
   </div>
   <div class="btn-row">
     <button class="btn" id="deploy-btn">DEPLOY</button>
+    <button class="btn" id="host-coop-btn">HOST CO-OP</button>
+    <button class="btn" id="join-coop-btn">JOIN CO-OP</button>
     <button class="btn" id="scores-btn">HIGH SCORES</button>
+  </div>
+</div>
+<div id="coop-screen" class="screen" style="display:none;">
+  <div class="screen-title" style="font-size:30px;letter-spacing:6px;">CO-OP ROOM</div>
+  <div class="screen-sub" id="coop-status">CONNECTING...</div>
+  <div class="big-stat" id="coop-code" style="display:none;letter-spacing:8px;"></div>
+  <input id="coop-pin" maxlength="4" placeholder="ROOM PIN" style="display:none;background:#071007;border:2px solid #4a8a2a;color:#5aaa2a;font-family:'Courier New',monospace;font-size:22px;letter-spacing:8px;text-align:center;padding:10px 14px;width:180px;pointer-events:all;outline:none;" />
+  <div class="btn-row">
+    <button class="btn" id="coop-confirm" style="display:none;">JOIN</button>
+    <button class="btn" id="coop-play" style="display:none;">SELECT LOADOUT</button>
+    <button class="btn" id="coop-back">BACK</button>
   </div>
 </div>
 <div id="weapon-select" class="screen" style="display:none;">
@@ -285,6 +298,9 @@ const POOL_SIZE=50;
 let particlePool=[],bloodPoolMeshes=[];
 let isCrouching=false,velY=0,jumpOffset=0,isGrounded=true,leanAmt=0;
 const SECOND_FLOOR_Y=3.2;
+const MP_SERVER_URL=new URLSearchParams(location.search).get('server')||localStorage.getItem('dzc_mp_server')||((location.hostname==='localhost'||location.hostname==='127.0.0.1'||location.protocol==='file:')?'ws://localhost:3001':'');
+let multiplayerEnabled=false,mpWs=null,mpRoomCode='',mpPlayerId='',mpLastSend=0,mpStatus='';
+const remotePlayers=new Map();
 
 function loadPersistent(){try{const d=localStorage.getItem('dzc_data');if(d)persistentData=JSON.parse(d);}catch(e){}if(!persistentData)persistentData={scores:[],upgrades:{hp:0,speed:0,grenade:0,dmg:0},availableScore:0};}
 function savePersistent(){try{localStorage.setItem('dzc_data',JSON.stringify(persistentData));}catch(e){}}
@@ -1305,6 +1321,59 @@ document.getElementById('scores-back').addEventListener('click',e=>{e.stopPropag
 document.getElementById('upgrades-btn').addEventListener('click',e=>{e.stopPropagation();showUpgradesScreen();});
 document.getElementById('upgrades-back').addEventListener('click',e=>{e.stopPropagation();document.getElementById('upgrades-screen').style.display='none';savePersistent();});
 
+// MULTIPLAYER CLIENT
+function setCoopStatus(text){mpStatus=text;document.getElementById('coop-status').textContent=text;}
+function cleanupRemotePlayers(){remotePlayers.forEach(p=>scene.remove(p.group));remotePlayers.clear();}
+function makeRemotePlayer(){
+  const g=new THREE.Group();
+  const bodyMat=mkMat(0x2f7cff),headMat=mkMat(0xd8b28a),gunMat=mkMat(0x222222);
+  const body=new THREE.Mesh(new THREE.BoxGeometry(.65,1.05,.35),bodyMat);body.position.y=.8;g.add(body);
+  const head=new THREE.Mesh(new THREE.BoxGeometry(.38,.38,.38),headMat);head.position.y=1.5;g.add(head);
+  const gun=new THREE.Mesh(new THREE.BoxGeometry(.12,.12,.7),gunMat);gun.position.set(.32,1.05,-.35);g.add(gun);
+  const flash=new THREE.PointLight(0xffdd66,0,3);flash.position.set(.32,1.05,-.72);g.add(flash);
+  scene.add(g);return{group:g,body,head,gun,flash,lastShot:false};
+}
+function updateRemotePlayer(id,state){
+  if(!state)return;
+  let p=remotePlayers.get(id);if(!p){p=makeRemotePlayer();remotePlayers.set(id,p);}
+  p.group.position.set(state.x||0,state.y?state.y-PLAYER_HEIGHT:0,state.z||0);
+  p.group.rotation.y=state.yaw||0;
+  p.body.scale.y=state.crouch?.72:1;
+  p.body.position.y=state.crouch?.55:.8;p.head.position.y=state.crouch?1.12:1.5;
+  p.group.rotation.z=(state.lean||0)*.18;
+  p.gun.position.y=state.ads?1.24:1.05;
+  p.flash.intensity=state.shooting?2.5:0;
+}
+function handleMpMessage(msg){
+  if(msg.type==='roomCreated'||msg.type==='joinedRoom'){
+    multiplayerEnabled=true;mpRoomCode=msg.roomCode;mpPlayerId=msg.playerId;
+    document.getElementById('coop-code').style.display='block';document.getElementById('coop-code').textContent='PIN '+mpRoomCode;
+    document.getElementById('coop-pin').style.display='none';document.getElementById('coop-confirm').style.display='none';document.getElementById('coop-play').style.display='inline-block';
+    setCoopStatus(msg.type==='roomCreated'?'Share this PIN with player 2':'Joined room '+mpRoomCode);
+    (msg.players||[]).forEach(p=>{if(p.id!==mpPlayerId)updateRemotePlayer(p.id,p.state);});
+  }else if(msg.type==='playerUpdate')updateRemotePlayer(msg.playerId,msg.state);
+  else if(msg.type==='playerLeft'){const p=remotePlayers.get(msg.playerId);if(p){scene.remove(p.group);remotePlayers.delete(msg.playerId);}setCoopStatus('Player left. Room '+mpRoomCode);}
+  else if(msg.type==='error')setCoopStatus(msg.message||'Multiplayer error');
+}
+function connectMultiplayer(onOpen){
+  if(!MP_SERVER_URL){setCoopStatus('Multiplayer server URL not configured');return;}
+  if(mpWs&&mpWs.readyState===WebSocket.OPEN){onOpen();return;}
+  try{mpWs=new WebSocket(MP_SERVER_URL);}catch(e){setCoopStatus('Could not open multiplayer connection');return;}
+  setCoopStatus('Connecting to '+MP_SERVER_URL);
+  mpWs.onopen=onOpen;
+  mpWs.onmessage=e=>{try{handleMpMessage(JSON.parse(e.data));}catch(err){}};
+  mpWs.onclose=()=>{if(multiplayerEnabled)setCoopStatus('Disconnected from co-op server');};
+  mpWs.onerror=()=>setCoopStatus('Co-op server connection failed');
+}
+function hostCoop(){document.getElementById('start-screen').style.display='none';document.getElementById('coop-screen').style.display='flex';document.getElementById('coop-pin').style.display='none';document.getElementById('coop-confirm').style.display='none';document.getElementById('coop-play').style.display='none';document.getElementById('coop-code').style.display='none';connectMultiplayer(()=>mpWs.send(JSON.stringify({type:'createRoom'})));}
+function joinCoop(){document.getElementById('start-screen').style.display='none';document.getElementById('coop-screen').style.display='flex';document.getElementById('coop-code').style.display='none';document.getElementById('coop-play').style.display='none';document.getElementById('coop-pin').style.display='block';document.getElementById('coop-confirm').style.display='inline-block';setCoopStatus('Enter host PIN');setTimeout(()=>document.getElementById('coop-pin').focus(),50);}
+function sendMpState(){
+  if(!multiplayerEnabled||!mpWs||mpWs.readyState!==WebSocket.OPEN||!mpRoomCode||!started)return;
+  const now=performance.now();if(now-mpLastSend<66)return;mpLastSend=now;
+  mpWs.send(JSON.stringify({type:'playerState',roomCode:mpRoomCode,state:{x:camera.position.x,y:camera.position.y,z:camera.position.z,yaw,pitch,crouch:isCrouching,jump:!isGrounded,lean:leanAmt,ads:isADS,shooting:mouseDown,weapon:weapons[curWeaponIdx]?.id||'pistol'}}));
+}
+function leaveCoop(){multiplayerEnabled=false;mpRoomCode='';mpPlayerId='';cleanupRemotePlayers();if(mpWs){mpWs.close();mpWs=null;}}
+
 // GAME FLOW
 function startGame(){
   document.getElementById('start-screen').style.display='none';
@@ -1312,6 +1381,7 @@ function startGame(){
   document.getElementById('upgrade-overlay').style.display='none';
   document.getElementById('pause-overlay').style.display='none';
   document.getElementById('scores-screen').style.display='none';
+  document.getElementById('coop-screen').style.display='none';
   document.getElementById('click-resume').style.display='block';
   started=true;gameOver=false;paused=false;pointerLockLost=false;
   health=MAX_HEALTH+persistentData.upgrades.hp*25;score=0;wave=1;
@@ -1337,6 +1407,7 @@ function startGame(){
   bossProjectiles.forEach(p=>scene.remove(p.mesh));bossProjectiles=[];
   powerupDrops.forEach(p=>scene.remove(p.mesh));powerupDrops=[];
   casings.forEach(c=>scene.remove(c.mesh));casings=[];
+  if(!multiplayerEnabled)cleanupRemotePlayers();
   damageNumbers.forEach(d=>{if(d.el.parentNode)d.el.parentNode.removeChild(d.el);});damageNumbers=[];
   killFeedEntries.forEach(k=>{if(k.el.parentNode)k.el.parentNode.removeChild(k.el);});killFeedEntries=[];
   Object.keys(activePowerups).forEach(k=>delete activePowerups[k]);updatePowerupHUD();
@@ -1385,7 +1456,12 @@ function endGame(){
   if(windSoundNode)windSoundNode.gain.value=0;
 }
 
-document.getElementById('deploy-btn').addEventListener('click',e=>{e.stopPropagation();document.getElementById('start-screen').style.display='none';document.getElementById('weapon-select').style.display='flex';});
+document.getElementById('deploy-btn').addEventListener('click',e=>{e.stopPropagation();leaveCoop();document.getElementById('start-screen').style.display='none';document.getElementById('weapon-select').style.display='flex';});
+document.getElementById('host-coop-btn').addEventListener('click',e=>{e.stopPropagation();hostCoop();});
+document.getElementById('join-coop-btn').addEventListener('click',e=>{e.stopPropagation();joinCoop();});
+document.getElementById('coop-confirm').addEventListener('click',e=>{e.stopPropagation();const roomCode=document.getElementById('coop-pin').value.trim();connectMultiplayer(()=>mpWs.send(JSON.stringify({type:'joinRoom',roomCode})));});
+document.getElementById('coop-play').addEventListener('click',e=>{e.stopPropagation();document.getElementById('coop-screen').style.display='none';document.getElementById('weapon-select').style.display='flex';});
+document.getElementById('coop-back').addEventListener('click',e=>{e.stopPropagation();leaveCoop();document.getElementById('coop-screen').style.display='none';document.getElementById('start-screen').style.display='flex';});
 ['wc-shotgun','wc-m4a1','wc-smg'].forEach(id=>{document.getElementById(id).addEventListener('click',()=>{selectedWeaponId=id.slice(3);document.getElementById('weapon-select').style.display='none';startGame();});});
 document.getElementById('restart-btn').addEventListener('click',e=>{e.stopPropagation();restartGame();});
 
@@ -1406,6 +1482,7 @@ function animate(){
     updateBossProjectiles(dt);updatePowerupDrops(dt);updateActivePowerups(dt);
     updateBarricades(dt);updateWeather(dt);updateWaveSpawning();
     updateDamageNumbers();updateKillFeed();updateDamageArrows(dt);updateCasings(dt);
+    sendMpState();
     updatePowerupHUD();
   }
   camera.position.x+=shakeX;camera.position.y+=shakeY;
