@@ -19,6 +19,10 @@ body > canvas{position:fixed;top:0;left:0;z-index:0;display:block;}
 #health-label{font-size:10px;letter-spacing:3px;color:#4a8a2a;margin-bottom:4px;}
 #health-track{width:200px;height:12px;background:#0a180a;border:1px solid #2a4a1a;}
 #health-fill{height:100%;background:linear-gradient(to right,#2a6a1a,#5aaa2a);transition:width .2s,background .4s;}
+#armor-wrap{position:fixed;bottom:58px;left:20px;width:200px;}
+#armor-label{font-size:8px;letter-spacing:2px;color:#4a8aaa;margin-bottom:2px;}
+#armor-track{width:200px;height:7px;background:#071018;border:1px solid #1a3a4a;}
+#armor-fill{height:100%;background:linear-gradient(to right,#2a668a,#5aaacc);transition:width .2s;}
 #stamina-wrap{position:fixed;bottom:16px;left:20px;width:200px;}
 #stamina-label{font-size:8px;letter-spacing:2px;color:#2a5a8a;margin-bottom:2px;}
 #stamina-track{width:200px;height:7px;background:#0a0a18;border:1px solid #1a2a4a;}
@@ -30,7 +34,9 @@ body > canvas{position:fixed;top:0;left:0;z-index:0;display:block;}
 #reload-msg{font-size:11px;letter-spacing:2px;color:#cccc30;display:none;margin-top:3px;animation:blink .55s infinite;}
 #score-wrap{position:fixed;top:20px;right:20px;text-align:right;}
 #score-val{font-size:20px;color:#5aaa2a;text-shadow:0 0 8px #2a6a10;}
+#cash-val{font-size:13px;color:#ccaa44;letter-spacing:2px;margin-top:3px;text-shadow:0 0 8px #775511;}
 #wave-val{font-size:12px;color:#3a5a2a;letter-spacing:3px;margin-top:4px;}
+#buyphase-val{font-size:12px;color:#ccaa44;letter-spacing:3px;margin-top:4px;display:none;}
 #wave-announce{position:fixed;top:36%;left:50%;transform:translateX(-50%);font-size:28px;letter-spacing:5px;color:#5aaa2a;text-shadow:0 0 30px #2a7a10;opacity:0;transition:opacity .5s;pointer-events:none;text-align:center;white-space:nowrap;background:rgba(0,0,0,.5);padding:10px 24px;}
 #minimap-wrap{position:fixed;top:20px;left:20px;}
 #minimap-label{font-size:9px;letter-spacing:2px;color:#3a5a2a;margin-bottom:3px;}
@@ -104,6 +110,7 @@ body > canvas{position:fixed;top:0;left:0;z-index:0;display:block;}
 #objective-text{font-size:12px;letter-spacing:2px;line-height:1.5;}
 #objective-progress{height:5px;width:0;background:#77cc44;box-shadow:0 0 8px #77cc44;margin-top:6px;transition:width .12s;}
 #interact-prompt{position:fixed;top:58%;left:50%;transform:translateX(-50%);font-size:12px;letter-spacing:3px;color:#ccdd77;text-shadow:0 0 10px #88aa33;opacity:0;transition:opacity .15s;pointer-events:none;}
+#perk-wrap{position:fixed;bottom:82px;left:20px;font-size:8px;letter-spacing:2px;color:#ccaa44;text-shadow:0 0 7px #775511;min-height:12px;}
 #scores-screen{position:fixed;top:0;left:0;right:0;bottom:0;background:rgba(0,0,0,.85);display:none;flex-direction:column;align-items:center;justify-content:center;z-index:30;color:#5aaa2a;}
 .score-entry{font-size:11px;letter-spacing:2px;margin:3px 0;color:#3a5a2a;}
 #upgrades-screen{position:fixed;top:0;left:0;right:0;bottom:0;background:rgba(0,0,0,.85);display:none;flex-direction:column;align-items:center;justify-content:center;z-index:30;color:#5aaa2a;}
@@ -121,10 +128,11 @@ body > canvas{position:fixed;top:0;left:0;z-index:0;display:block;}
   <div id="crosshair"></div>
   <div id="hit-marker"></div>
   <div id="click-resume" style="display:none;position:fixed;top:50%;left:50%;transform:translate(-50%,-50%);background:rgba(0,0,0,.85);color:#8adc46;font-family:'Press Start 2P',monospace;font-size:18px;padding:24px 36px;border:2px solid #8adc46;border-radius:8px;z-index:15;text-align:center;pointer-events:none;">CLICK TO RESUME</div>
+  <div id="armor-wrap"><div id="armor-label">ARMOR</div><div id="armor-track"><div id="armor-fill"></div></div></div>
   <div id="health-wrap"><div id="health-label">HEALTH</div><div id="health-track"><div id="health-fill"></div></div></div>
   <div id="stamina-wrap"><div id="stamina-label">STAMINA</div><div id="stamina-track"><div id="stamina-fill" style="width:100%"></div></div></div>
   <div id="ammo-wrap"><div id="ammo-label">AMMO</div><div id="ammo-count">15/60</div><div id="weapon-name">PISTOL M9</div><div id="reload-msg">RELOADING...</div></div>
-  <div id="score-wrap"><div id="score-val">SCORE: 0</div><div id="wave-val">WAVE 1</div></div>
+  <div id="score-wrap"><div id="score-val">SCORE: 0</div><div id="cash-val">CASH: $0</div><div id="wave-val">WAVE 1</div><div id="buyphase-val">BUY PHASE</div></div>
   <div id="minimap-wrap"><div id="minimap-label">TACTICAL MAP</div><canvas id="minimap" width="160" height="160"></canvas></div>
   <div id="wave-announce"></div>
   <div id="flash"></div>
@@ -135,6 +143,7 @@ body > canvas{position:fixed;top:0;left:0;z-index:0;display:block;}
   <div id="combo-wrap"></div>
   <div id="boss-health-wrap"><div id="boss-health-label">BOSS</div><div id="boss-health-track"><div id="boss-health-fill"></div></div></div>
   <div id="powerup-hud"><div class="pu-ind pu-dmg" id="pu-dmg">2x DMG</div><div class="pu-ind pu-speed" id="pu-speed">SPEED</div><div class="pu-ind pu-invuln" id="pu-invuln">INVULN</div></div>
+  <div id="perk-wrap"></div>
   <div id="kill-feed"></div>
   <div class="dmg-arrow da-top" id="da-top"></div>
   <div class="dmg-arrow da-bottom" id="da-bottom"></div>
@@ -225,6 +234,7 @@ if(typeof THREE==='undefined'){const s=document.getElementById('start-screen');s
 
 const PLAYER_SPEED=6,PLAYER_HEIGHT=1.7,CROUCH_HEIGHT=1.15,JUMP_VEL=5.2,GRAVITY=14,MOUSE_SENS=.002,MAX_HEALTH=100,ARENA=42,SPAWN_MS=2000;
 const HIP_FOV=72,ADS_FOV=60;
+const MAX_ARMOR=100,BUY_PHASE_SECONDS=20;
 const PLAYER_RADIUS=.4,SPAWN_X=0,SPAWN_Z=10;
 const WEAPONS=[
   {id:'pistol',name:'PISTOL M9',dmg:35,mag:15,maxMag:15,reserve:60,rate:.42,range:50,auto:false,spread:0,pellets:1,reloadT:1.2},
@@ -244,6 +254,14 @@ const ZDEFS={
 const RECOIL={pistol:{p:.042,y:.008},shotgun:{p:.085,y:.013},ak47:{p:.030,y:.013},sniper:{p:.115,y:.004},grenade:{p:0,y:0},m4a1:{p:.027,y:.011},smg:{p:.016,y:.007}};
 const WEAPON_SHAKE={pistol:.08,shotgun:.22,ak47:.095,sniper:.28,grenade:.16,m4a1:.085,smg:.06};
 const WAVE_MSGS=['','WAVE 1 - SURVIVE!','WAVE 2 - HUNGRY','WAVE 3 - RUNNERS INCOMING','WAVE 4 - THE BIG ONE','WAVE 5 - ALL UNITS','WAVE 6 - DARKNESS FALLS'];
+const STATION_DEFS={
+  ammo:{label:'AMMO CRATE',cost:500,color:0xccaa44},
+  armor:{label:'ARMOR STATION',cost:750,color:0x44aadd},
+  speed:{label:'SPEED COLA',cost:1500,color:0x44aaff},
+  reload:{label:'QUICK RELOAD',cost:1800,color:0xccdd44},
+  resist:{label:'TAC ARMOR',cost:2200,color:0x77cc88},
+  bench:{label:'UPGRADE BENCH',cost:1200,color:0xff8844}
+};
 const BUILDINGS=[
   {name:'West House 1',x:-24,z:-30,w:12,d:11},{name:'East House 1',x:24,z:-30,w:12,d:11},
   {name:'West House 2',x:-24,z:-10,w:12,d:11},{name:'East House 2',x:24,z:-10,w:12,d:11},
@@ -275,7 +293,7 @@ function startRainSound(){if(rainSoundNode)return;const ctx=getAudio();if(!ctx)r
 function startWindSound(){if(windSoundNode)return;const ctx=getAudio();if(!ctx)return;const buf=mkNoise(2);if(!buf)return;const src=ctx.createBufferSource();src.buffer=buf;src.loop=true;const f=ctx.createBiquadFilter();f.type='bandpass';f.frequency.value=400;f.Q.value=.3;const g=ctx.createGain();g.gain.value=0;windSoundNode=g;src.connect(f);f.connect(g);g.connect(ctx.destination);src.start();}
 
 // GAME STATE
-let health,score,wave,gameOver,started,reloading,reloadEndTime=0,pointerLockLost=false;
+let health,armor,cash,wave,score,gameOver,started,reloading,reloadEndTime=0,pointerLockLost=false;
 let curWeaponIdx=0,weapons=[],lastFireT=0,autoFireT=0,mouseDown=false;
 let selectedWeaponId='shotgun';
 let isADS=false,currentFOV=HIP_FOV;
@@ -303,7 +321,7 @@ let killFeedEntries=[],damageNumbers=[];
 let wwActive=false,wwAccumX=0,wwAccumY=0,wwSelected=0;
 let dmgArrowTimers={top:0,bottom:0,left:0,right:0};
 let casings=[];
-let nextSpawnGameTime=0,waveTransitionTime=0,waveState='idle';
+let nextSpawnGameTime=0,waveTransitionTime=0,buyPhaseEndTime=0,waveState='idle';
 let strafeTilt=0;
 let muzzleFlashTimer=0,muzzleFlashSprite=null;
 let moveVX=0,moveVZ=0,landT=0,hitMarkerT=0;
@@ -312,6 +330,7 @@ const POOL_SIZE=50;
 let particlePool=[],bloodPoolMeshes=[];
 let isCrouching=false,velY=0,jumpOffset=0,isGrounded=true,leanAmt=0;
 let objectiveStage='power',objectiveItems=[],objectiveTarget=null,extractHold=0,objectiveDone=false;
+let buyStations=[],stationTarget=null,ownedPerks={speed:false,reload:false,resist:false};
 const SECOND_FLOOR_Y=3.2;
 const DEFAULT_MP_SERVER_URL='wss://zombie-multiplayer-server-gtbt.onrender.com';
 const MP_SERVER_URL=new URLSearchParams(location.search).get('server')||localStorage.getItem('dzc_mp_server')||((location.hostname==='localhost'||location.hostname==='127.0.0.1')?'ws://localhost:3001':DEFAULT_MP_SERVER_URL);
@@ -528,6 +547,20 @@ addObjectiveItem('fuse','COLLECT RADIO FUSE',-24,-30,0x44aaff);
 addObjectiveItem('radio','REPAIR EVAC RADIO',24,30,0x77ff55);
 const mat=new THREE.MeshBasicMaterial({color:0x77ff44,transparent:true,opacity:.18,side:THREE.DoubleSide});const zone=new THREE.Mesh(new THREE.PlaneGeometry(7,7),mat);zone.rotation.x=-Math.PI/2;zone.position.set(0,.045,-38);scene.add(zone);objectiveItems.push({id:'extract',label:'HOLD EXTRACTION ZONE',x:0,z:-38,mesh:zone,light:null,done:false,active:false,color:0x77ff44});
 }
+function addBuyStation(id,x,z){
+  const def=STATION_DEFS[id],mat=new THREE.MeshLambertMaterial({color:def.color}),dark=mkMat(0x172018);
+  const g=new THREE.Group();
+  const base=new THREE.Mesh(new THREE.BoxGeometry(1.45,.35,1.0),dark);base.position.set(0,.18,0);g.add(base);
+  const body=new THREE.Mesh(new THREE.BoxGeometry(1.05,1.1,.62),mat);body.position.set(0,.9,0);g.add(body);
+  const sign=new THREE.Mesh(new THREE.BoxGeometry(1.25,.28,.08),new THREE.MeshBasicMaterial({color:def.color}));sign.position.set(0,1.58,-.36);g.add(sign);
+  g.position.set(x,0,z);scene.add(g);
+  const light=new THREE.PointLight(def.color,.65,4);light.position.set(x,1.7,z);scene.add(light);
+  buyStations.push({id,x,z,group:g,light,def});
+}
+function buildBuyStations(){
+  addBuyStation('ammo',-6,-12);addBuyStation('armor',6,-12);addBuyStation('bench',0,14);
+  addBuyStation('speed',-31,18);addBuyStation('reload',31,18);addBuyStation('resist',0,-32);
+}
 function buildNeighborhoodHouse(hx,hz,idx){
 const hw=6,hd=5.5,fh=3.2,totalH=fh*2,t=.28,frontDir=hx<0?1:-1,frontX=hx+frontDir*hw,backX=hx-frontDir*hw,door=2.4,seg=(hd*2-door)/2;
 const ext=[houseExtMat,yellowWallMat,yardWall2Mat,redWallMat][idx%4];
@@ -578,6 +611,7 @@ zs.forEach((z,i)=>{buildNeighborhoodHouse(-24,z,i);buildNeighborhoodHouse(24,z,i
 buildStreetCar(-4.35,-36,0x335577);buildStreetCar(4.35,-23,0x6a6a62);buildStreetCar(-4.35,24,0x553333);buildStreetCar(4.35,36,0x2f5b3f);
 buildDebris(-3.6,-5.5);buildDebris(3.6,17.5);buildDebris(-6.2,38);buildDebris(6.2,-38);
 buildObjectives();
+buildBuyStations();
 zs.forEach(z=>{[-9.2,9.2].forEach(x=>{box(.12,1.2,.12,barkMat,x,.6,z+3.6);box(.5,.32,.32,mailboxMat,x+.25*Math.sign(x),1.05,z+3.6);});});
 [-34,-14,6,26].forEach(z=>{box(.72,1.05,.68,trashBinMat,-16,.52,z);addObs(-16,z,.43,.4);box(.72,1.05,.68,trashBinMat,16,.52,z+2);addObs(16,z+2,.43,.4);});
 [-36,-24,-4,4,24,36].forEach(z=>{[-34,34].forEach(x=>{box(.45,4.1,.45,barkMat,x,2.05,z);box(3.1,2.5,3.1,leafMat,x,5,z);box(2.35,2.0,2.35,leafMat,x+(x>0?-.42:.42),6.25,z+.2);});});
@@ -785,7 +819,7 @@ function fireWeapon(){
 function startReload(){
   const w=weapons[curWeaponIdx];
   if(reloading||w.reserve===0||w.mag===w.maxMag||w.id==='grenade')return;
-  reloading=true;reloadEndTime=gameTimeMs+w.reloadT*1000;playReload();
+  reloading=true;reloadEndTime=gameTimeMs+w.reloadT*(ownedPerks.reload ? .72 : 1)*1000;playReload();
   const rm=document.getElementById('reload-msg');rm.textContent='RELOADING...';rm.style.display='block';
 }
 function doMelee(){
@@ -815,7 +849,7 @@ function explodeGrenade(pos){
   playExplosion();
   zombies.forEach(z=>{if(z.dead)return;const d=z.group.position.distanceTo(pos);if(d<8){z.health-=120*(1-d/8);z.hitT=.3;if(z.health<=0)killZombie(z,false);}});
   const pd=camera.position.distanceTo(pos);
-  if(pd<7&&!activePowerups.invuln){health=Math.max(0,health-Math.floor(30*(1-pd/7)));if(health<=0){endGame();return;}updateHUD();showDmg();}
+  if(pd<7){applyPlayerDamage(30*(1-pd/7),pos);if(gameOver)return;}
   for(let i=0;i<20;i++)addParticle(pos,0xff6600,6);for(let i=0;i<12;i++)addParticle(pos,0xff2200,8);
   shakeAmt=Math.max(shakeAmt,pd<10?.6:.3);
 }
@@ -922,7 +956,7 @@ function killZombie(zb,headshot){
   comboCount++;comboTimer=2;
   const mult=Math.min(5,1+comboCount*.1);
   const pts=Math.floor(def.score*mult);
-  score+=pts;waveKilled++;
+  awardRunCurrency(pts,Math.floor(def.score*.65));waveKilled++;
   playDeath();updateHUD();
   updateComboDisplay();
   addKillFeed(zb.type,headshot);
@@ -1013,9 +1047,7 @@ function updateZombies(dt){
         if(z.attackReady&&z.attackWindup<=0&&!gameOver&&gameTimeMs-z.lastDmgT>def.dmgCD){
           z.attackReady=false;
           z.lastDmgT=gameTimeMs;
-          if(!activePowerups.invuln||activePowerups.invuln<=0){health=Math.max(0,health-Math.floor(def.dmg*z.dmgMul));showDmg();showDamageArrow(z.group.position);shakeAmt=Math.max(shakeAmt,z.type==='big' ? .38 : .25);}
-          if(health<=0){endGame();return;}
-          updateHUD();
+          applyPlayerDamage(def.dmg*z.dmgMul,z.group.position);shakeAmt=Math.max(shakeAmt,z.type==='big' ? .38 : .25);if(gameOver)return;
         }
       }
     }
@@ -1037,7 +1069,7 @@ function updateBossProjectiles(dt){
     const p=bossProjectiles[i];p.life-=dt;p.pos.addScaledVector(p.vel,dt);p.mesh.position.copy(p.pos);
     const dx=camera.position.x-p.pos.x,dz=camera.position.z-p.pos.z;
     if(Math.sqrt(dx*dx+dz*dz+Math.pow(camera.position.y-1.5,2))<1.5){
-      if(!activePowerups.invuln||activePowerups.invuln<=0){health=Math.max(0,health-Math.floor(30*getWaveDamageMul()));showDmg();shakeAmt=Math.max(shakeAmt,.2);if(health<=0){endGame();return;}updateHUD();}
+      applyPlayerDamage(30*getWaveDamageMul(),p.pos);shakeAmt=Math.max(shakeAmt,.2);if(gameOver)return;
       scene.remove(p.mesh);bossProjectiles.splice(i,1);continue;
     }
     if(p.life<=0||Math.abs(p.pos.x)>ARENA||Math.abs(p.pos.z)>ARENA){scene.remove(p.mesh);bossProjectiles.splice(i,1);}
@@ -1081,17 +1113,74 @@ function resetObjectives(){objectiveDone=false;setObjectiveStage('power');object
 function objectiveText(){if(objectiveStage==='power')return'RESTORE POWER: '+objectiveItems.filter(o=>o.id.startsWith('power')&&o.done).length+'/2 PANELS';if(objectiveStage==='fuse')return'COLLECT RADIO FUSE';if(objectiveStage==='radio')return'REPAIR EVAC RADIO';if(objectiveStage==='extract')return'HOLD EXTRACTION: '+Math.floor(extractHold)+' / 20s';return objectiveDone?'EXTRACTION SIGNAL SENT - SURVIVE':'SURVIVE THE OUTBREAK';}
 function updateObjectiveHUD(){document.getElementById('objective-text').textContent=objectiveText();document.getElementById('objective-progress').style.width=(objectiveStage==='extract'?Math.min(100,extractHold/20*100):0)+'%';}
 function activeObjectiveItems(){if(objectiveStage==='power')return objectiveItems.filter(o=>o.id.startsWith('power')&&!o.done);if(objectiveStage==='fuse')return[obj('fuse')];if(objectiveStage==='radio')return[obj('radio')];if(objectiveStage==='extract')return[obj('extract')];return[];}
-function completeObjectiveItem(o){if(!o||o.done)return;o.done=true;if(o.light)o.light.intensity=0;if(o.mesh.material&&o.id!=='extract')o.mesh.material.color.setHex(0x335533);score+=150;updateHUD();if(objectiveStage==='power'&&objectiveItems.filter(p=>p.id.startsWith('power')&&p.done).length>=2){speakWave('Power restored. Find the radio fuse.');setObjectiveStage('fuse');}else if(o.id==='fuse'){speakWave('Fuse acquired. Repair the radio.');setObjectiveStage('radio');}else if(o.id==='radio'){speakWave('Radio online. Move to extraction.');setObjectiveStage('extract');}updateObjectiveHUD();}
+function awardRunCurrency(points,bonusCash){score+=points;cash+=bonusCash===undefined?Math.floor(points*.5):bonusCash;}
+function completeObjectiveItem(o){if(!o||o.done)return;o.done=true;if(o.light)o.light.intensity=0;if(o.mesh.material&&o.id!=='extract')o.mesh.material.color.setHex(0x335533);awardRunCurrency(150,100);updateHUD();if(objectiveStage==='power'&&objectiveItems.filter(p=>p.id.startsWith('power')&&p.done).length>=2){speakWave('Power restored. Find the radio fuse.');setObjectiveStage('fuse');}else if(o.id==='fuse'){speakWave('Fuse acquired. Repair the radio.');setObjectiveStage('radio');}else if(o.id==='radio'){speakWave('Radio online. Move to extraction.');setObjectiveStage('extract');}updateObjectiveHUD();}
 function tryObjectiveInteract(){if(!started||gameOver||paused)return false;const candidates=activeObjectiveItems();for(const o of candidates){if(!o||o.done)continue;const d=Math.hypot(camera.position.x-o.x,camera.position.z-o.z);if(d<2.4&&o.id!=='extract'){completeObjectiveItem(o);return true;}}return false;}
-function updateObjectives(dt){if(!started||gameOver||paused)return;objectiveTarget=null;activeObjectiveItems().forEach(o=>{if(!o||o.done)return;o.active=true;if(o.light)o.light.intensity=.35+Math.sin(gameTime*4)*.2;const d=Math.hypot(camera.position.x-o.x,camera.position.z-o.z);if(d<2.6)objectiveTarget=o;});document.getElementById('interact-prompt').style.opacity=objectiveTarget&&objectiveTarget.id!=='extract'?1:0;if(objectiveStage==='extract'){const ex=obj('extract'),inside=ex&&Math.hypot(camera.position.x-ex.x,camera.position.z-ex.z)<3.6;if(inside){extractHold=Math.min(20,extractHold+dt);if(ex.mesh.material)ex.mesh.material.opacity=.28+Math.sin(gameTime*6)*.08;if(extractHold>=20&&!objectiveDone){objectiveDone=true;score+=1500;updateHUD();speakWave('Extraction signal sent. Keep surviving.');setObjectiveStage('done');}}else extractHold=Math.max(0,extractHold-dt*.6);}updateObjectiveHUD();}
+function updateObjectives(dt){if(!started||gameOver||paused)return;objectiveTarget=null;activeObjectiveItems().forEach(o=>{if(!o||o.done)return;o.active=true;if(o.light)o.light.intensity=.35+Math.sin(gameTime*4)*.2;const d=Math.hypot(camera.position.x-o.x,camera.position.z-o.z);if(d<2.6)objectiveTarget=o;});if(objectiveStage==='extract'){const ex=obj('extract'),inside=ex&&Math.hypot(camera.position.x-ex.x,camera.position.z-ex.z)<3.6;if(inside){extractHold=Math.min(20,extractHold+dt);if(ex.mesh.material)ex.mesh.material.opacity=.28+Math.sin(gameTime*6)*.08;if(extractHold>=20&&!objectiveDone){objectiveDone=true;awardRunCurrency(1500,1000);updateHUD();speakWave('Extraction signal sent. Keep surviving.');setObjectiveStage('done');}}else extractHold=Math.max(0,extractHold-dt*.6);}updateObjectiveHUD();}
+
+// ECONOMY
+function stationPrompt(st){
+  if(!st)return'';
+  if(st.id==='speed'&&ownedPerks.speed)return'SPEED COLA OWNED';
+  if(st.id==='reload'&&ownedPerks.reload)return'QUICK RELOAD OWNED';
+  if(st.id==='resist'&&ownedPerks.resist)return'TAC ARMOR OWNED';
+  return 'PRESS E - '+st.def.label+' $'+st.def.cost;
+}
+function canAfford(cost){if(cash>=cost)return true;playBeep();return false;}
+function refillAmmo(){weapons.forEach(w=>{if(w.id==='grenade')w.mag=w.maxMag;else if(w.reserve!==Infinity){w.mag=w.maxMag;w.reserve=Math.max(w.reserve,w.maxMag*4);}});}
+function buyWeaponUpgrade(){
+  const w=weapons[curWeaponIdx],opts=['dmg','rate','spread'].filter(t=>w.upgrades[t]<3);
+  if(!opts.length){playBeep();return false;}
+  const t=opts.sort((a,b)=>w.upgrades[a]-w.upgrades[b])[0];w.upgrades[t]++;return true;
+}
+function tryStationInteract(){
+  if(!started||gameOver||paused||!stationTarget)return false;
+  const st=stationTarget,def=st.def;
+  if(['speed','reload','resist'].includes(st.id)&&ownedPerks[st.id]){playBeep();return true;}
+  if(!canAfford(def.cost))return true;
+  if(st.id==='ammo')refillAmmo();
+  else if(st.id==='armor')armor=MAX_ARMOR;
+  else if(st.id==='bench'){if(!buyWeaponUpgrade())return true;}
+  else ownedPerks[st.id]=true;
+  cash-=def.cost;playPowerup();updateHUD();return true;
+}
+function updateBuyStations(dt){
+  stationTarget=null;if(!started||gameOver||paused)return;
+  buyStations.forEach(st=>{if(st.light)st.light.intensity=.45+Math.sin(gameTime*3+st.x)*.18;const d=Math.hypot(camera.position.x-st.x,camera.position.z-st.z);if(d<2.8)stationTarget=st;});
+  const prompt=document.getElementById('interact-prompt');
+  if(stationTarget){prompt.textContent=stationPrompt(stationTarget);prompt.style.opacity=1;}
+  else if(objectiveTarget&&objectiveTarget.id!=='extract'){prompt.textContent='PRESS E';prompt.style.opacity=1;}
+  else prompt.style.opacity=0;
+}
+function applyPlayerDamage(amount,sourcePos){
+  if(activePowerups.invuln&&activePowerups.invuln>0)return;
+  let dmg=Math.floor(amount*(ownedPerks.resist ? .82 : 1));
+  if(armor>0){const absorbed=Math.min(armor,Math.ceil(dmg*.65));armor-=absorbed;dmg-=absorbed;}
+  health=Math.max(0,health-dmg);showDmg();if(sourcePos)showDamageArrow(sourcePos);updateHUD();
+  if(health<=0)endGame();
+}
 
 // WAVES
 function startWave(){
+  waveState='active';buyPhaseEndTime=0;
   waveTotal=6+Math.floor((wave-1)*5.5);waveSpawned=0;waveKilled=0;waveEnding=false;
   speakWave(wave===1?'Wave 1. Survive.':'Wave '+wave+'. Horde incoming.');
   updateHUD();nextSpawnGameTime=gameTimeMs;
 }
+function startBuyPhase(){
+  waveState='buy';buyPhaseEndTime=gameTime+BUY_PHASE_SECONDS;
+  cash+=250+wave*75;
+  const el=document.getElementById('wave-announce');el.textContent='BUY PHASE - SPEND CASH';el.style.opacity=1;
+  speakWave('Buy phase. Spend cash before the next wave.');
+  setTimeout(()=>{if(waveState==='buy')el.style.opacity=0;},2800);
+  updateHUD();
+}
 function updateWaveSpawning(){
+  if(waveState==='buy'){
+    if(gameTime>=buyPhaseEndTime&&!gameOver)nextWave();
+    else updateHUD();
+    return;
+  }
   if(waveState!=='active')return;
   if(waveSpawned<waveTotal&&!gameOver){
     if(gameTimeMs>=nextSpawnGameTime){
@@ -1102,7 +1191,7 @@ function updateWaveSpawning(){
       nextSpawnGameTime=gameTimeMs+getWaveSpawnDelay();
     }
   }
-  if(waveEnding&&gameTime>=waveTransitionTime&&!gameOver)nextWave();
+  if(waveEnding&&gameTime>=waveTransitionTime&&!gameOver)startBuyPhase();
 }
 function getZType(){
   const r=Math.random();
@@ -1115,7 +1204,7 @@ function nextWave(){
   const el=document.getElementById('wave-announce');el.textContent=msg;el.style.opacity=1;
   setTimeout(()=>{el.style.opacity=0;},2800);
   updateHUD();
-  setTimeout(()=>{if(!gameOver){waveState='active';startWave();}},2600);
+  setTimeout(()=>{if(!gameOver)startWave();},2600);
 }
 
 // BARRICADES
@@ -1179,7 +1268,7 @@ function updatePlayer(dt){
   houseFloorY+=(getHouseFloorTarget(camera.position.x,camera.position.z)-houseFloorY)*Math.min(1,dt*7);
   const speedMul=(activePowerups.speed&&activePowerups.speed>0)?1.4:1;
   const persistSpeedMul=1+getUpgrade('speed')*.15;
-  let spd=PLAYER_SPEED*speedMul*persistSpeedMul;
+  let spd=PLAYER_SPEED*speedMul*persistSpeedMul*(ownedPerks.speed?1.14:1);
   if(isCrouching)spd*=.72;
   const sY=Math.sin(yaw),cY=Math.cos(yaw);
   let mx=0,mz=0;
@@ -1283,6 +1372,7 @@ mmCtx.fillStyle='rgba(30,60,15,.82)';mmCtx.fillRect(0,0,MM,MM);
 mmCtx.fillStyle='#555';const rw=10/WS*MM;mmCtx.fillRect(MM/2-rw/2,0,rw,MM);mmCtx.fillRect(0,MM/2-rw/2,MM,rw);
 mmCtx.fillStyle='#c8a840';buildingRects.forEach(b=>{const p=wm(b.x-b.w/2,b.z-b.d/2);mmCtx.fillRect(p.x,p.y,b.w/WS*MM,b.d/WS*MM);});
 objectiveItems.forEach(o=>{if(o.done||!o.active)return;const p=wm(o.x,o.z);mmCtx.fillStyle=o.id==='extract'?'#77ff44':o.id==='fuse'?'#44aaff':'#ffdd44';mmCtx.fillRect(p.x-3,p.y-3,6,6);});
+buyStations.forEach(st=>{const p=wm(st.x,st.z);mmCtx.fillStyle='#ccaa44';mmCtx.fillRect(p.x-2,p.y-2,4,4);});
 zombies.forEach(z=>{if(z.dead||z.sinking)return;const p=wm(z.group.position.x,z.group.position.z);mmCtx.fillStyle=z.type==='boss'?'#ff00ff':z.type==='big'?'#ff44aa':z.type==='runner'?'#ff8844':'#ff3333';mmCtx.fillRect(p.x-2,p.y-2,z.type==='boss'?6:4,z.type==='boss'?6:4);});
 const pp=wm(camera.position.x,camera.position.z);
 mmCtx.fillStyle='#aaffaa';mmCtx.beginPath();mmCtx.arc(pp.x,pp.y,4,0,Math.PI*2);mmCtx.fill();
@@ -1299,11 +1389,18 @@ function updateHUD(){
   const pct=(health/maxHP)*100;
   const hf=document.getElementById('health-fill');hf.style.width=pct+'%';
   hf.style.background=health>60?'linear-gradient(to right,#2a6a1a,#5aaa2a)':health>30?'linear-gradient(to right,#7a6a10,#cccc28)':'linear-gradient(to right,#8a1010,#dd2020)';
+  document.getElementById('armor-fill').style.width=(armor/MAX_ARMOR*100)+'%';
   const w=weapons[curWeaponIdx];
   document.getElementById('ammo-count').textContent=w.mag+' / '+(w.reserve===Infinity?'\u221e':w.reserve);
   document.getElementById('weapon-name').textContent=w.name;
   document.getElementById('score-val').textContent='SCORE: '+score;
+  document.getElementById('cash-val').textContent='CASH: $'+cash;
   document.getElementById('wave-val').textContent='WAVE '+wave;
+  const bp=document.getElementById('buyphase-val');
+  if(waveState==='buy'){bp.style.display='block';bp.textContent='BUY PHASE '+Math.max(0,Math.ceil(buyPhaseEndTime-gameTime))+'s';}
+  else bp.style.display='none';
+  const perks=[];if(ownedPerks.speed)perks.push('SPEED');if(ownedPerks.reload)perks.push('RELOAD');if(ownedPerks.resist)perks.push('RESIST');
+  document.getElementById('perk-wrap').textContent=perks.length?'PERKS: '+perks.join(' / '):'';
   document.getElementById('vignette').style.opacity=health<=25?1:health<=50?.45:0;
 }
 function updateComboDisplay(){
@@ -1449,7 +1546,7 @@ document.addEventListener('keydown',e=>{
   if(e.code==='Space'&&isGrounded){isGrounded=false;velY=JUMP_VEL;jumpOffset=.01;bobTimer=0;}
   if(e.code==='KeyR'&&!reloading)startReload();
   if(e.code==='KeyV')doMelee();
-  if(e.code==='KeyE'){tryObjectiveInteract();return;}
+  if(e.code==='KeyE'){if(tryStationInteract())return;tryObjectiveInteract();return;}
   if(e.code==='KeyG'){const g=weapons[4];if(g.mag>0){curWeaponIdx=4;updateGunModel();fireWeapon();updateHUD();}}
   if(e.code==='Tab'&&!wwActive){wwActive=true;wwAccumX=0;wwAccumY=0;wwSelected=curWeaponIdx;updateWeaponWheel();}
   const num={Digit1:0,Digit2:1,Digit3:2,Digit4:3,Digit5:4,Digit6:5,Digit7:6}[e.code];
@@ -1560,7 +1657,7 @@ function startGame(){
   document.getElementById('coop-screen').style.display='none';
   document.getElementById('click-resume').style.display='block';
   started=true;gameOver=false;paused=false;pointerLockLost=false;
-  health=MAX_HEALTH+getUpgrade('hp')*25;score=0;wave=1;
+  health=MAX_HEALTH+getUpgrade('hp')*25;armor=0;cash=0;score=0;wave=1;ownedPerks={speed:false,reload:false,resist:false};stationTarget=null;buyPhaseEndTime=0;
   yaw=0;pitch=0;bobTimer=0;dayFactor=0;shakeAmt=0;
   reloading=false;mouseDown=false;lowAmmoBeeped=false;groansT=0;
   isADS=false;currentFOV=HIP_FOV;recoilPitch=0;recoilYaw=0;
@@ -1591,7 +1688,7 @@ function startGame(){
   ['top','bottom','left','right'].forEach(d=>{document.getElementById('da-'+d).style.opacity=0;dmgArrowTimers[d]=0;});
   document.getElementById('boss-health-wrap').style.display='none';
   document.getElementById('wave-announce').style.opacity=0;
-  document.getElementById('interact-prompt').style.opacity=0;
+  document.getElementById('interact-prompt').textContent='PRESS E';document.getElementById('interact-prompt').style.opacity=0;
   resetObjectives();
   // Reset blood pools
   bloodPools.forEach(b=>{b.active=false;b.mesh.visible=false;});bloodPools=[];
@@ -1659,7 +1756,7 @@ function animate(){
     updatePlayer(dt);recoverCameraIfInvalid();updateZombies(dt);updateGrenades(dt);updateParticles(dt);
     updateLoot(dt);updateDayNight(dt);updateShake(dt);updateGunEffects(dt);updateADS(dt);updateRecoil(dt);
     updateBossProjectiles(dt);updatePowerupDrops(dt);updateActivePowerups(dt);
-    updateBarricades(dt);updateObjectives(dt);updateWeather(dt);updateWaveSpawning();
+    updateBarricades(dt);updateObjectives(dt);updateBuyStations(dt);updateWeather(dt);updateWaveSpawning();
     updateDamageNumbers();updateKillFeed();updateDamageArrows(dt);updateHitMarker(dt);updateCasings(dt);
     sendMpState();
     updatePowerupHUD();
