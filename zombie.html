@@ -812,9 +812,9 @@ function updateCasings(dt){
 
 // ZOMBIES
 function getWaveHealthMul(){return 1+(wave-1)*.08;}
-function getWaveSpeedMul(){return 1+Math.min(.45,(wave-1)*.03);}
+function getWaveSpeedMul(){return 1+Math.min(.5,(wave-1)*.032);}
 function getWaveDamageMul(){return 1+(wave-1)*.055;}
-function getWaveSpawnDelay(){return Math.max(650,SPAWN_MS-wave*95);}
+function getWaveSpawnDelay(){return Math.max(560,SPAWN_MS-wave*105);}
 function zombieBlockedAt(x,z,def,pad){return obstacles.some(ob=>Math.abs(x-ob.px)<ob.hx+def.sz*pad&&Math.abs(z-ob.pz)<ob.hz+def.sz*pad);}
 function chooseZombieDetour(z,def,px,pz){
   const dx=px-z.group.position.x,dz=pz-z.group.position.z,base=Math.atan2(dz,dx);
@@ -860,14 +860,14 @@ function createZombie(typeKey){
   sx=Math.max(-ARENA+3,Math.min(ARENA-3,sx));sz2=Math.max(-ARENA+3,Math.min(ARENA-3,sz2));
   group.position.set(sx,0,sz2);
   const hp=Math.floor(def.hp*getWaveHealthMul());
-  const zb={group,type:typeKey||'regular',health:hp,maxHealth:hp,dead:false,sinking:false,sinkT:0,walkT:0,hitT:0,staggerT:0,bodyMat,darkMat,dmgCD:def.dmgCD,lastDmgT:0,avoidTimer:0,avoidDir:0,lastFireT:0,lastX:sx,lastZ:sz2,stuckT:0,detourTimer:0,detourX:0,detourZ:0,speedMul:getWaveSpeedMul(),dmgMul:getWaveDamageMul()};
+  const zb={group,type:typeKey||'regular',health:hp,maxHealth:hp,dead:false,sinking:false,sinkT:0,deathTilt:0,walkT:0,hitT:0,staggerT:0,attackWindup:0,attackReady:false,flankTimer:0,flankDir:0,chargeTimer:0,chargeCooldown:1.5+Math.random()*2,chargeX:0,chargeZ:0,bodyMat,darkMat,dmgCD:def.dmgCD,lastDmgT:0,avoidTimer:0,avoidDir:0,lastFireT:0,lastX:sx,lastZ:sz2,stuckT:0,detourTimer:0,detourX:0,detourZ:0,speedMul:getWaveSpeedMul(),dmgMul:getWaveDamageMul()};
   group.children.forEach(c=>c.userData.zombie=zb);
   scene.add(group);zombies.push(zb);
   if(typeKey==='boss')activeBoss=zb;
 }
 function killZombie(zb,headshot){
   if(zb.dead)return;
-  zb.dead=true;zb.sinking=true;zb.sinkT=1.6;
+  zb.dead=true;zb.sinking=true;zb.sinkT=1.6;zb.deathTilt=(Math.random()>.5?1:-1)*(Math.PI/2.4+Math.random()*.35);
   const def=ZDEFS[zb.type];
   comboCount++;comboTimer=2;
   const mult=Math.min(5,1+comboCount*.1);
@@ -898,19 +898,26 @@ function updateZombies(dt){
   }}
   for(let i=zombies.length-1;i>=0;i--){
     const z=zombies[i];
-    if(z.sinking){z.sinkT-=dt;z.group.position.y-=dt*.65;if(z.sinkT<=0){scene.remove(z.group);zombies.splice(i,1);}continue;}
+    if(z.sinking){z.sinkT-=dt;z.group.rotation.z+=(z.deathTilt-z.group.rotation.z)*Math.min(1,dt*7);z.group.position.y-=dt*.55;if(z.sinkT<=0){scene.remove(z.group);zombies.splice(i,1);}continue;}
     if(z.dead)continue;
     const dx=px-z.group.position.x,dz=pz-z.group.position.z;
-    const dist=Math.sqrt(dx*dx+dz*dz);
+    const dist=Math.max(.001,Math.sqrt(dx*dx+dz*dz));
     const def=ZDEFS[z.type];
     if(z.staggerT>0)z.staggerT=Math.max(0,z.staggerT-dt);
+    if(z.flankTimer>0)z.flankTimer-=dt;
+    if(z.chargeCooldown>0)z.chargeCooldown-=dt;
+    if(z.attackWindup>0)z.attackWindup-=dt;
     const moved=Math.hypot(z.group.position.x-z.lastX,z.group.position.z-z.lastZ);
     z.stuckT=moved<.025?z.stuckT+dt:0;z.lastX=z.group.position.x;z.lastZ=z.group.position.z;
     if(z.stuckT>.45){const a=chooseZombieDetour(z,def,px,pz);z.detourX=Math.cos(a);z.detourZ=Math.sin(a);z.detourTimer=.9;z.stuckT=0;}
     z.group.rotation.y=Math.atan2(dx,dz);
     // Obstacle avoidance
     let moveX=dx/dist,moveZ=dz/dist;
-    if(z.detourTimer>0){z.detourTimer-=dt;moveX=z.detourX;moveZ=z.detourZ;}
+    if(z.type==='runner'&&dist>4&&dist<18&&z.flankTimer<=0&&Math.random()<dt*.35){z.flankTimer=.9+Math.random()*.7;z.flankDir=Math.random()>.5?1:-1;}
+    if(z.type==='big'&&dist>5&&dist<13&&z.chargeCooldown<=0&&z.chargeTimer<=0){z.chargeTimer=.75;z.chargeCooldown=4.5+Math.random()*2.5;z.chargeX=moveX;z.chargeZ=moveZ;z.staggerT=0;}
+    if(z.chargeTimer>0){z.chargeTimer-=dt;moveX=z.chargeX;moveZ=z.chargeZ;}
+    else if(z.flankTimer>0){const side=z.flankDir;moveX=dx/dist*.45+dz/dist*side*.95;moveZ=dz/dist*.45-dx/dist*side*.95;const ml=Math.hypot(moveX,moveZ)||1;moveX/=ml;moveZ/=ml;}
+    else if(z.detourTimer>0){z.detourTimer-=dt;moveX=z.detourX;moveZ=z.detourZ;}
     else if(z.avoidTimer>0){z.avoidTimer-=dt;moveX=Math.cos(z.avoidDir);moveZ=Math.sin(z.avoidDir);}
     else{
       const stepX=z.group.position.x+moveX*2,stepZ=z.group.position.z+moveZ*2;
@@ -932,7 +939,8 @@ function updateZombies(dt){
     }
     if(!attackingBarricade){
       if(dist>1.1*def.sz){
-        const spd=def.speed*z.speedMul*(z.staggerT>0 ? .38 : 1)*dt;
+        const behaviorMul=z.chargeTimer>0?2.25:z.flankTimer>0?1.18:1;
+        const spd=def.speed*z.speedMul*behaviorMul*(z.staggerT>0 ? .38 : 1)*dt;
         let nx=z.group.position.x+moveX*spd,nz=z.group.position.z+moveZ*spd;
         let blocked=zombieBlockedAt(nx,nz,def,.3);
         if(!blocked){z.group.position.x=nx;z.group.position.z=nz;}
@@ -948,11 +956,14 @@ function updateZombies(dt){
             if(!zBlocked){z.group.position.x=nxOnly2;z.group.position.z=nzOnly2;}
           }
         }
-        z.walkT+=dt*(z.type==='runner'?8:4);z.group.position.y=Math.abs(Math.sin(z.walkT))*.06*def.sz;
+        z.walkT+=dt*(z.type==='runner'?9:z.chargeTimer>0?7:4);z.group.position.y=Math.abs(Math.sin(z.walkT))*.06*def.sz;z.group.rotation.x+=((z.chargeTimer>0 ? .18 : 0)-z.group.rotation.x)*Math.min(1,dt*8);
       }else{
-        if(!gameOver&&gameTimeMs-z.lastDmgT>def.dmgCD){
+        if(!z.attackReady&&z.attackWindup<=0&&gameTimeMs-z.lastDmgT>def.dmgCD*.75){z.attackWindup=z.type==='runner' ? .18 : z.type==='big' ? .38 : .26;z.attackReady=true;}
+        if(z.attackWindup>0){z.group.position.y=.08*Math.sin((z.attackWindup/(z.type==='big' ? .38 : .26))*Math.PI)*def.sz;z.group.rotation.x+=(-.16-z.group.rotation.x)*Math.min(1,dt*8);}
+        if(z.attackReady&&z.attackWindup<=0&&!gameOver&&gameTimeMs-z.lastDmgT>def.dmgCD){
+          z.attackReady=false;
           z.lastDmgT=gameTimeMs;
-          if(!activePowerups.invuln||activePowerups.invuln<=0){health=Math.max(0,health-Math.floor(def.dmg*z.dmgMul));showDmg();showDamageArrow(z.group.position);shakeAmt=Math.max(shakeAmt,.25);}
+          if(!activePowerups.invuln||activePowerups.invuln<=0){health=Math.max(0,health-Math.floor(def.dmg*z.dmgMul));showDmg();showDamageArrow(z.group.position);shakeAmt=Math.max(shakeAmt,z.type==='big' ? .38 : .25);}
           if(health<=0){endGame();return;}
           updateHUD();
         }
