@@ -1347,7 +1347,7 @@ document.addEventListener('keyup',e=>{
   if(e.code==='Tab'&&wwActive){wwActive=false;updateWeaponWheel();if(wwSelected!==curWeaponIdx)switchWeapon(wwSelected);}
 });
 document.addEventListener('mousedown',e=>{
-  if(e.button===2){if(started&&!gameOver&&document.pointerLockElement===renderer.domElement){isADS=true;document.getElementById('ads-overlay').style.display='none';document.getElementById('crosshair').style.display='none';}return;}
+  if(e.button===2){if(started&&!gameOver&&document.pointerLockElement===renderer.domElement){isADS=true;}return;}
   if(e.button!==0)return;if(!started||gameOver)return;
   mouseDown=true;
   if(document.pointerLockElement!==renderer.domElement){renderer.domElement.requestPointerLock();return;}
