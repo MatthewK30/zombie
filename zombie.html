@@ -161,7 +161,7 @@ body > canvas{position:fixed;top:0;left:0;z-index:0;display:block;}
   <div class="screen-info">
     W A S D — MOVE &nbsp;|&nbsp; MOUSE — AIM &nbsp;|&nbsp; LMB — SHOOT<br>
     RMB — ADS &nbsp;|&nbsp; R — RELOAD &nbsp;|&nbsp; 1–7 — SWITCH WEAPON &nbsp;|&nbsp; G — GRENADE<br>
-    SHIFT — SPRINT &nbsp;|&nbsp; CTRL — CROUCH &nbsp;|&nbsp; SPACE — JUMP &nbsp;|&nbsp; V — MELEE<br>
+    SHIFT — SPRINT &nbsp;|&nbsp; C — CROUCH &nbsp;|&nbsp; SPACE — JUMP &nbsp;|&nbsp; V — MELEE<br>
     Q / E — LEAN &nbsp;|&nbsp; TAB — WEAPON WHEEL &nbsp;|&nbsp; ESC — PAUSE
   </div>
   <div class="btn-row">
@@ -461,8 +461,8 @@ function getHouseFloorTarget(x,z){
   for(const s of stairZones){
     if(Math.abs(x-s.x)<s.hx&&Math.abs(z-s.z)<s.hz){
       const p=s.dir<0?clamp01((s.x+s.hx-x)/(s.hx*2)):clamp01((x-(s.x-s.hx))/(s.hx*2));
-      if(p>.72)playerFloorLevel=1;else if(p<.18)playerFloorLevel=0;
-      return p*SECOND_FLOOR_Y;
+      if(p>.68)playerFloorLevel=1;else if(p<.12)playerFloorLevel=0;
+      return playerFloorLevel&&p>.55?SECOND_FLOOR_Y:p*SECOND_FLOOR_Y;
     }
   }
   if(floorBuildingAt(x,z))return playerFloorLevel?SECOND_FLOOR_Y:0;
@@ -1032,10 +1032,6 @@ function killZombie(zb,headshot){
   if(zb.type==='boss'){activeBoss=null;document.getElementById('boss-health-wrap').style.display='none';}
   if(!waveEnding&&waveKilled>=waveTotal){waveEnding=true;waveTransitionTime=gameTime+1.8;}
 }
-function relocateStuckZombie(z,def){
-  const sp=getZombieSpawnPosition(def,spawnAreaCursor++);
-  z.group.position.set(sp.x,0,sp.z);z.lastX=sp.x;z.lastZ=sp.z;z.stuckT=0;z.stuckLongT=0;z.avoidTimer=0;z.detourTimer=0;
-}
 function updateZombies(dt){
   const px=camera.position.x,pz=camera.position.z;
   groansT-=dt;
@@ -1065,8 +1061,7 @@ function updateZombies(dt){
     if(z.attackWindup>0)z.attackWindup-=dt;
     const moved=Math.hypot(z.group.position.x-z.lastX,z.group.position.z-z.lastZ);
     if(moved<.025){z.stuckT+=dt;z.stuckLongT+=dt;}else{z.stuckT=0;z.stuckLongT=0;}z.lastX=z.group.position.x;z.lastZ=z.group.position.z;
-    if(z.stuckLongT>2.4&&dist>12){relocateStuckZombie(z,def);continue;}
-    if(z.stuckT>.35){const a=chooseZombieDetour(z,def,px,pz);z.detourX=Math.cos(a);z.detourZ=Math.sin(a);z.detourTimer=.65;z.stuckT=0;}
+    if(z.stuckT>.35){const a=chooseZombieDetour(z,def,px,pz);z.detourX=Math.cos(a);z.detourZ=Math.sin(a);z.detourTimer=Math.min(1.1,.65+z.stuckLongT*.25);z.stuckT=0;}
     z.group.rotation.y=Math.atan2(dx,dz);
     // Obstacle avoidance
     let moveX=dx/dist,moveZ=dz/dist;
@@ -1255,12 +1250,14 @@ function updateWaveSpawning(){
   if(waveSpawned<waveTotal&&!gameOver){
     if(gameTimeMs>=nextSpawnGameTime){
       const burst=Math.min(waveTotal-waveSpawned,1+Math.floor(wave/3)+(Math.random()<.35?1:0));
+      const burstStart=spawnAreaCursor;
       let bossSpawned=false;
       for(let i=0;i<burst;i++){
         const isBossWave=wave%5===0&&waveSpawned===waveTotal-1;
-        createZombie(isBossWave?'boss':getZType(),spawnAreaCursor+i);
+        createZombie(isBossWave?'boss':getZType(),burstStart+i*3);
         waveSpawned++;bossSpawned=bossSpawned||isBossWave;
       }
+      spawnAreaCursor+=burst*3+1;
       if(bossSpawned){const el=document.getElementById('wave-announce');el.textContent='BOSS INCOMING';el.style.opacity=1;speakWave('Boss incoming.');setTimeout(()=>{el.style.opacity=0;},2000);}
       nextSpawnGameTime=gameTimeMs+getWaveSpawnDelay();
     }
@@ -1337,7 +1334,7 @@ function recoverCameraIfInvalid(){
   yaw=0;pitch=0;recoilPitch=0;recoilYaw=0;shakeX=0;shakeY=0;houseFloorY=0;playerFloorLevel=0;jumpOffset=0;velY=0;moveVX=0;moveVZ=0;isGrounded=true;keys={};
 }
 function updatePlayer(dt){
-  isCrouching=!!(keys['ControlLeft']||keys['ControlRight']);
+  isCrouching=!!keys['KeyC'];
   const stanceHeight=isCrouching?CROUCH_HEIGHT:PLAYER_HEIGHT;
   houseFloorY+=(getHouseFloorTarget(camera.position.x,camera.position.z)-houseFloorY)*Math.min(1,dt*7);
   const speedMul=(activePowerups.speed&&activePowerups.speed>0)?1.4:1;
@@ -1392,7 +1389,7 @@ if(windSoundNode)windSoundNode.gain.value=0;
     camera.position.x=nx;camera.position.z=nz;
     if(isGrounded)bobTimer+=dt*(isSprinting?14:8.5)*(Math.min(1,curMoveSpeed/(PLAYER_SPEED*1.5))+.35);
   }
-  else if(isGrounded)camera.position.y+=(stanceHeight-camera.position.y)*Math.min(1,dt*8);
+  else if(isGrounded)bobTimer*=Math.max(0,1-dt*6);
   if(!isGrounded){velY-=GRAVITY*dt;jumpOffset=Math.max(-.4,jumpOffset+velY*dt);if(jumpOffset<=0){const impact=Math.min(1,Math.abs(velY)/7);jumpOffset=0;velY=0;isGrounded=true;landT=.18*impact;shakeAmt=Math.max(shakeAmt,.08*impact);}}
   if(landT>0)landT=Math.max(0,landT-dt);
   const bob=(moving&&isGrounded)?Math.sin(bobTimer)*(isSprinting?.085:.048)*(Math.min(1,curMoveSpeed/(PLAYER_SPEED*1.4))):0;
