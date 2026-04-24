@@ -283,16 +283,38 @@ function savePersistent(){try{localStorage.setItem('dzc_data',JSON.stringify(per
 loadPersistent();
 
 // THREE.JS SETUP
-const renderer=new THREE.WebGLRenderer({antialias:true});
+let renderer,scene,camera;
+function showInitError(title,sub,info){
+  const s=document.getElementById('start-screen');
+  s.style.display='flex';
+  s.querySelector('.screen-title').textContent=title;
+  s.querySelector('.screen-sub').textContent=sub;
+  s.querySelector('.screen-info').innerHTML=info;
+  document.getElementById('deploy-btn').style.display='none';
+}
+function createRenderer(){
+  const attempts=[
+    {antialias:true,powerPreference:'high-performance'},
+    {antialias:false,powerPreference:'high-performance'},
+    {antialias:false}
+  ];
+  let lastErr=null;
+  for(const opts of attempts){
+    try{return new THREE.WebGLRenderer(opts);}catch(err){lastErr=err;}
+  }
+  showInitError('LOAD ERROR','WEBGL UNAVAILABLE','This browser or device could not create a WebGL context.<br>Try reloading, closing other GPU-heavy tabs, or disabling browser graphics extensions.');
+  throw lastErr||new Error('WebGL renderer initialization failed');
+}
+renderer=createRenderer();
 renderer.setPixelRatio(Math.min(devicePixelRatio,2));
 renderer.setSize(innerWidth,innerHeight);
 renderer.shadowMap.enabled=true;
 renderer.shadowMap.type=THREE.PCFSoftShadowMap;
 renderer.setClearColor(0xd4764a);
 document.body.appendChild(renderer.domElement);
-const scene=new THREE.Scene();
+scene=new THREE.Scene();
 scene.fog=new THREE.Fog(0xc4764a,20,110);
-const camera=new THREE.PerspectiveCamera(72,innerWidth/innerHeight,.08,200);
+camera=new THREE.PerspectiveCamera(72,innerWidth/innerHeight,.08,200);
 camera.rotation.order='YXZ';
 camera.position.set(0,PLAYER_HEIGHT,0);
 const clock=new THREE.Clock();
@@ -1273,7 +1295,7 @@ document.addEventListener('mouseup',e=>{
 document.addEventListener('contextmenu',e=>e.preventDefault());
 document.addEventListener('pointerlockchange',()=>{
   if(document.pointerLockElement===renderer.domElement){pointerLockLost=false;document.getElementById('click-resume').style.display='none';}
-  else{isADS=false;document.getElementById('ads-overlay').style.display='none';document.getElementById('crosshair').style.display='block';if(started&&!gameOver){pointerLockLost=true;document.getElementById('click-resume').style.display='block';}}
+  else{isADS=false;document.getElementById('ads-overlay').style.display='none';document.getElementById('crosshair').style.display='block';if(started&&!gameOver&&!paused){pointerLockLost=true;document.getElementById('click-resume').style.display='block';}}
 });
 window.addEventListener('blur',()=>{keys={};});
 document.addEventListener('mousemove',e=>{
@@ -1285,8 +1307,8 @@ window.addEventListener('resize',()=>{camera.aspect=innerWidth/innerHeight;camer
 
 // PAUSE
 function togglePause(){
-  if(paused){paused=false;pointerLockLost=false;document.getElementById('pause-overlay').style.display='none';renderer.domElement.requestPointerLock();}
-  else{paused=true;document.getElementById('pause-overlay').style.display='flex';document.exitPointerLock();}
+  if(paused){paused=false;pointerLockLost=true;document.getElementById('pause-overlay').style.display='none';document.getElementById('click-resume').style.display='block';}
+  else{paused=true;document.getElementById('click-resume').style.display='none';document.getElementById('pause-overlay').style.display='flex';document.exitPointerLock();}
 }
 document.getElementById('resume-btn').addEventListener('click',e=>{e.stopPropagation();if(paused)togglePause();});
 document.getElementById('quit-btn').addEventListener('click',e=>{e.stopPropagation();paused=false;document.getElementById('pause-overlay').style.display='none';endGame();});
@@ -1304,7 +1326,7 @@ function startGame(){
   document.getElementById('upgrade-overlay').style.display='none';
   document.getElementById('pause-overlay').style.display='none';
   document.getElementById('scores-screen').style.display='none';
-  document.getElementById('click-resume').style.display='none';
+  document.getElementById('click-resume').style.display='block';
   started=true;gameOver=false;paused=false;pointerLockLost=false;
   health=MAX_HEALTH+persistentData.upgrades.hp*25;score=0;wave=1;
   yaw=0;pitch=0;bobTimer=0;dayFactor=0;shakeAmt=0;
@@ -1355,7 +1377,6 @@ function startGame(){
   const el=document.getElementById('wave-announce');el.textContent='WAVE 1 - SURVIVE!';el.style.opacity=1;
   setTimeout(()=>{el.style.opacity=0;},2200);
   setTimeout(()=>{if(!gameOver){waveState='active';startWave();}},2200);
-  renderer.domElement.requestPointerLock();
   // Muzzle flash sprite
   if(!muzzleFlashSprite){const sm=new THREE.SpriteMaterial({color:0xffffaa,blending:THREE.AdditiveBlending,transparent:true,opacity:1});
     muzzleFlashSprite=new THREE.Sprite(sm);muzzleFlashSprite.scale.set(.4,.4,1);muzzleFlashSprite.visible=false;

@@ -1,0 +1,4 @@
+.vercel
+.playwright/
+.playwright-mcp/
+game-verification.png
