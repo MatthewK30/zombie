@@ -139,9 +139,9 @@ body > canvas{position:fixed;top:0;left:0;z-index:0;display:block;}
   <div class="screen-sub">CITY OUTBREAK</div>
   <div class="screen-info">
     W A S D — MOVE &nbsp;|&nbsp; MOUSE — AIM &nbsp;|&nbsp; LMB — SHOOT<br>
-    R — RELOAD &nbsp;|&nbsp; 1–7 — SWITCH WEAPON &nbsp;|&nbsp; G — GRENADE<br>
-    SHIFT — SPRINT &nbsp;|&nbsp; V — MELEE &nbsp;|&nbsp; Q — WEAPON WHEEL<br>
-    ESC — PAUSE &nbsp;|&nbsp; Explore buildings for weapons, ammo &amp; health kits
+    RMB — ADS &nbsp;|&nbsp; R — RELOAD &nbsp;|&nbsp; 1–7 — SWITCH WEAPON &nbsp;|&nbsp; G — GRENADE<br>
+    SHIFT — SPRINT &nbsp;|&nbsp; CTRL — CROUCH &nbsp;|&nbsp; SPACE — JUMP &nbsp;|&nbsp; V — MELEE<br>
+    Q / E — LEAN &nbsp;|&nbsp; TAB — WEAPON WHEEL &nbsp;|&nbsp; ESC — PAUSE
   </div>
   <div class="btn-row">
     <button class="btn" id="deploy-btn">DEPLOY</button>
@@ -198,7 +198,8 @@ body > canvas{position:fixed;top:0;left:0;z-index:0;display:block;}
 'use strict';
 if(typeof THREE==='undefined'){const s=document.getElementById('start-screen');s.querySelector('.screen-title').textContent='LOAD ERROR';s.querySelector('.screen-sub').textContent='THREE.JS UNAVAILABLE';s.querySelector('.screen-info').innerHTML='Could not load Three.js from CDN.<br>Check your internet connection and reload.';document.getElementById('deploy-btn').style.display='none';throw new Error('THREE.js CDN failed to load');}
 
-const PLAYER_SPEED=6,PLAYER_HEIGHT=1.7,MOUSE_SENS=.002,MAX_HEALTH=100,ARENA=42,SPAWN_MS=2000;
+const PLAYER_SPEED=6,PLAYER_HEIGHT=1.7,CROUCH_HEIGHT=1.15,JUMP_VEL=5.2,GRAVITY=14,MOUSE_SENS=.002,MAX_HEALTH=100,ARENA=42,SPAWN_MS=2000;
+const HIP_FOV=72,ADS_FOV=60;
 const PLAYER_RADIUS=.4,SPAWN_X=0,SPAWN_Z=10;
 const WEAPONS=[
   {id:'pistol',name:'PISTOL M9',dmg:35,mag:15,maxMag:15,reserve:60,rate:.42,range:50,auto:false,spread:0,pellets:1,reloadT:1.2},
@@ -248,7 +249,7 @@ function startWindSound(){if(windSoundNode)return;const ctx=getAudio();if(!ctx)r
 let health,score,wave,gameOver,started,reloading,reloadEndTime=0,pointerLockLost=false;
 let curWeaponIdx=0,weapons=[],lastFireT=0,autoFireT=0,mouseDown=false;
 let selectedWeaponId='shotgun';
-let isADS=false,currentFOV=72;
+let isADS=false,currentFOV=HIP_FOV;
 let recoilPitch=0,recoilYaw=0;
 let shakeAmt=0,shakeX=0,shakeY=0;
 let dayFactor=0,bobTimer=0;
@@ -278,6 +279,7 @@ let muzzleFlashTimer=0,muzzleFlashSprite=null;
 let persistentData=null;
 const POOL_SIZE=50;
 let particlePool=[],bloodPoolMeshes=[];
+let isCrouching=false,velY=0,jumpOffset=0,isGrounded=true,leanAmt=0;
 
 function loadPersistent(){try{const d=localStorage.getItem('dzc_data');if(d)persistentData=JSON.parse(d);}catch(e){}if(!persistentData)persistentData={scores:[],upgrades:{hp:0,speed:0,grenade:0,dmg:0},availableScore:0};}
 function savePersistent(){try{localStorage.setItem('dzc_data',JSON.stringify(persistentData));}catch(e){}}
@@ -593,9 +595,37 @@ function getEffectiveRate(w){return w.rate*(1-w.upgrades.rate*.2);}
 function getEffectiveSpread(w){return w.spread*(1-w.upgrades.spread*.3);}
 const gunGroup=new THREE.Group();
 camera.add(gunGroup);
+function getWeaponView(id){
+  const views={
+    pistol:{hipPos:[.18,-.18,-.46],adsPos:[.03,-.13,-.27],hipRot:[0,-.03,0],adsRot:[0,0,0],sight:[0,.055,-.12,.055,.04]},
+    shotgun:{hipPos:[.2,-.19,-.5],adsPos:[.04,-.135,-.31],hipRot:[0,-.025,0],adsRot:[0,0,0],sight:[0,.07,-.16,.07,.045]},
+    ak47:{hipPos:[.2,-.185,-.5],adsPos:[.035,-.13,-.3],hipRot:[0,-.03,0],adsRot:[0,0,0],sight:[0,.06,-.12,.06,.04]},
+    sniper:{hipPos:[.205,-.18,-.56],adsPos:[.045,-.125,-.34],hipRot:[0,-.02,0],adsRot:[0,0,0],sight:[0,.055,-.11,.055,.04]},
+    grenade:{hipPos:[.2,-.18,-.42],adsPos:[.2,-.18,-.42],hipRot:[0,0,0],adsRot:[0,0,0]},
+    m4a1:{hipPos:[.195,-.18,-.5],adsPos:[.03,-.13,-.29],hipRot:[0,-.025,0],adsRot:[0,0,0],sight:[0,.06,-.12,.06,.04]},
+    smg:{hipPos:[.19,-.18,-.47],adsPos:[.03,-.13,-.28],hipRot:[0,-.02,0],adsRot:[0,0,0],sight:[0,.055,-.105,.055,.04]}
+  };
+  return views[id]||views.pistol;
+}
+function addHoloSight(view){
+  if(!view.sight)return;
+  const [sx,sy,sz,sw,sh]=view.sight;
+  const frameMat=new THREE.MeshLambertMaterial({color:0x202225});
+  const glassMat=new THREE.MeshBasicMaterial({color:0x88ddff,transparent:true,opacity:.18,side:THREE.DoubleSide});
+  const reticleMat=new THREE.MeshBasicMaterial({color:0xff4422,transparent:true,opacity:.95,side:THREE.DoubleSide});
+  const base=new THREE.Mesh(new THREE.BoxGeometry(.05,.012,.04),frameMat);
+  base.position.set(sx,sy-.018,sz+.01);gunGroup.add(base);
+  const hood=new THREE.Mesh(new THREE.BoxGeometry(sw,.028,.038),frameMat);
+  hood.position.set(sx,sy,sz);gunGroup.add(hood);
+  const windowPane=new THREE.Mesh(new THREE.PlaneGeometry(sw*.72,sh),glassMat);
+  windowPane.position.set(sx,sy+.002,sz-.004);gunGroup.add(windowPane);
+  const reticle=new THREE.Mesh(new THREE.PlaneGeometry(.012,.012),reticleMat);
+  reticle.position.set(sx,sy+.002,sz-.007);gunGroup.add(reticle);
+}
 function updateGunModel(){
   gunGroup.clear();
   const w=weapons[curWeaponIdx];
+  const view=getWeaponView(w.id);
   const cols={pistol:0x888888,shotgun:0x8a5520,ak47:0x4a5a3a,sniper:0x2a3a4a,grenade:0x3a6a3a,m4a1:0x3a4a3a,smg:0x4a4855};
   const specs={
     pistol:{barrel:[.03,.03,.22],body:[.07,.06,.14],grip:[.045,.07,.04],mag:[.035,.055,.025]},
@@ -616,7 +646,10 @@ function updateGunModel(){
   if(sp.grip){const b=new THREE.Mesh(new THREE.BoxGeometry(sp.grip[0],sp.grip[1],sp.grip[2]),bm);b.position.set(0,-.065,.01);gunGroup.add(b);}
   if(sp.mag){const b=new THREE.Mesh(new THREE.BoxGeometry(sp.mag[0],sp.mag[1],sp.mag[2]),dm);b.position.set(0,-.08,-.02);gunGroup.add(b);}
   if(w.id==='grenade'){const b=new THREE.Mesh(new THREE.SphereGeometry(.06,6,6),bm);b.position.set(0,-.02,-.15);gunGroup.add(b);}
-  gunGroup.position.set(.18,-.18,-.46);
+  addHoloSight(view);
+  if(muzzleFlashSprite){gunGroup.add(muzzleFlashSprite);muzzleFlashSprite.position.set(0,.02,-.5);}
+  gunGroup.position.set(...view.hipPos);
+  gunGroup.rotation.set(...view.hipRot);
 }
 function switchWeapon(idx){
   if(idx===curWeaponIdx||idx<0||idx>=weapons.length)return;
@@ -629,6 +662,8 @@ function doMuzzleFlash(){
   if(muzzleFlashSprite){muzzleFlashSprite.visible=true;muzzleFlashTimer=.06;}
 }
 function updateGunEffects(dt){
+  const w=weapons[curWeaponIdx];
+  const view=getWeaponView(w.id);
   if(weaponSwapTimer>0){
     weaponSwapTimer-=dt;
     if(weaponSwapTimer<=.25&&pendingSwapIdx>=0){
@@ -637,15 +672,26 @@ function updateGunEffects(dt){
       document.getElementById('reload-msg').style.display='none';
       updateGunModel();updateHUD();
     }
-    const p=weaponSwapTimer<=.25?(.25-weaponSwapTimer)/.25:(.5-weaponSwapTimer)/.25;
-    gunGroup.position.y=-.18-(p<1?p*.15:0);
   }
-  if(recoilT>0){recoilT=Math.max(0,recoilT-dt*6);gunGroup.children.forEach(c=>{c.position.z=-((.5-weaponSwapTimer>0?0:.04)*(1-recoilT));});}
+  const drop=weaponSwapTimer>0?((weaponSwapTimer<=.25?(.25-weaponSwapTimer)/.25:(.5-weaponSwapTimer)/.25)<1?(weaponSwapTimer<=.25?(.25-weaponSwapTimer)/.25:(.5-weaponSwapTimer)/.25)*.15:0):0;
+  const basePos=isADS?view.adsPos:view.hipPos;
+  const baseRot=isADS?view.adsRot:view.hipRot;
+  const leanShift=leanAmt*.018;
+  const crouchShift=isCrouching?.025:0;
+  const lunge=meleeLunge>0?meleeLunge*.3:0;
+  const recoilKick=recoilT>0?.04*(1-recoilT):0;
+  gunGroup.position.x+=(basePos[0]+leanShift-gunGroup.position.x)*Math.min(1,dt*16);
+  gunGroup.position.y+=(basePos[1]-drop-crouchShift-gunGroup.position.y)*Math.min(1,dt*16);
+  gunGroup.position.z+=(basePos[2]-lunge-recoilKick-gunGroup.position.z)*Math.min(1,dt*16);
+  gunGroup.rotation.x+=(baseRot[0]-gunGroup.rotation.x)*Math.min(1,dt*16);
+  gunGroup.rotation.y+=(baseRot[1]-leanAmt*.05-gunGroup.rotation.y)*Math.min(1,dt*16);
+  gunGroup.rotation.z+=(baseRot[2]-leanAmt*.08-gunGroup.rotation.z)*Math.min(1,dt*16);
+  if(recoilT>0)recoilT=Math.max(0,recoilT-dt*6);
   if(flashT>0){flashT-=dt;if(flashT<=0){document.getElementById('flash').style.background='rgba(255,210,80,0)';shootLight.intensity=0;}}
   if(muzzleFlashTimer>0){muzzleFlashTimer-=dt;if(muzzleFlashTimer<=0&&muzzleFlashSprite)muzzleFlashSprite.visible=false;}
 }
-function applyRecoil(){const w=weapons[curWeaponIdx];const r=RECOIL[w.id]||{p:.022,y:.008};const mult=isADS?.45:1;recoilPitch-=r.p*mult;recoilYaw+=(Math.random()-.5)*r.y*2*mult;}
-function updateADS(dt){const tFOV=isADS?45:72;currentFOV+=(tFOV-currentFOV)*Math.min(1,dt*14);if(Math.abs(camera.fov-currentFOV)>.04){camera.fov=currentFOV;camera.updateProjectionMatrix();}}
+function applyRecoil(){const w=weapons[curWeaponIdx];const r=RECOIL[w.id]||{p:.022,y:.008};const mult=isADS?.6:1;recoilPitch-=r.p*mult;recoilYaw+=(Math.random()-.5)*r.y*2*mult;}
+function updateADS(dt){const tFOV=isADS?ADS_FOV:HIP_FOV;currentFOV+=(tFOV-currentFOV)*Math.min(1,dt*14);if(Math.abs(camera.fov-currentFOV)>.04){camera.fov=currentFOV;camera.updateProjectionMatrix();}}
 function updateRecoil(dt){const rr=isADS?10:7;recoilPitch+=(0-recoilPitch)*Math.min(1,dt*rr);recoilYaw+=(0-recoilYaw)*Math.min(1,dt*(rr+2));}
 
 function fireWeapon(){
@@ -1025,9 +1071,12 @@ function updateWeather(dt){
 
 // PLAYER MOVEMENT
 function updatePlayer(dt){
+  isCrouching=!!(keys['ControlLeft']||keys['ControlRight']);
+  const stanceHeight=isCrouching?CROUCH_HEIGHT:PLAYER_HEIGHT;
   const speedMul=(activePowerups.speed&&activePowerups.speed>0)?1.4:1;
   const persistSpeedMul=1+persistentData.upgrades.speed*.15;
   let spd=PLAYER_SPEED*speedMul*persistSpeedMul*dt;
+  if(isCrouching)spd*=.72;
   const sY=Math.sin(yaw),cY=Math.cos(yaw);
   let mx=0,mz=0;
   if(keys['KeyW']||keys['ArrowUp']){mx-=sY;mz-=cY;}
@@ -1069,19 +1118,27 @@ if(windSoundNode)windSoundNode.gain.value=0;
     obstacles.forEach(o=>{if(Math.abs(nx-o.px)<o.hx+PR&&Math.abs(cz-o.pz)<o.hz+PR)nx=cx;if(Math.abs(cx-o.px)<o.hx+PR&&Math.abs(nz-o.pz)<o.hz+PR)nz=cz;});
     nx=Math.max(-ARENA+1,Math.min(ARENA-1,nx));nz=Math.max(-ARENA+1,Math.min(ARENA-1,nz));
     camera.position.x=nx;camera.position.z=nz;
-    bobTimer+=dt*(isSprinting?12:8);
-    camera.position.y=PLAYER_HEIGHT+Math.sin(bobTimer)*(isSprinting?.07:.045);
-  }else{camera.position.y+=(PLAYER_HEIGHT-camera.position.y)*Math.min(1,dt*8);}
+    if(isGrounded)bobTimer+=dt*(isSprinting?12:8);
+  }
+  else if(isGrounded)camera.position.y+=(stanceHeight-camera.position.y)*Math.min(1,dt*8);
+  if(!isGrounded){velY-=GRAVITY*dt;jumpOffset=Math.max(-.4,jumpOffset+velY*dt);if(jumpOffset<=0){jumpOffset=0;velY=0;isGrounded=true;}}
+  const bob=(moving&&isGrounded)?Math.sin(bobTimer)*(isSprinting?.07:.045):0;
+  const targetY=stanceHeight+jumpOffset+bob;
+  camera.position.y+=((isGrounded?targetY:targetY)-camera.position.y)*Math.min(1,dt*(isGrounded?10:14));
   // Strafe tilt
   let targetTilt=0;
   if(keys['KeyA']||keys['ArrowLeft'])targetTilt=.052;
   if(keys['KeyD']||keys['ArrowRight'])targetTilt=-.052;
   strafeTilt+=(targetTilt-strafeTilt)*Math.min(1,dt*8);
-  tryFootstep(dt,moving);
+  let targetLean=0;
+  if(keys['KeyQ'])targetLean+=1;
+  if(keys['KeyE'])targetLean-=1;
+  leanAmt+=(targetLean-leanAmt)*Math.min(1,dt*10);
+  tryFootstep(dt,moving&&isGrounded);
   // Melee cooldown
   if(meleeCooldown>0)meleeCooldown-=dt;
-  if(meleeLunge>0){meleeLunge-=dt;gunGroup.position.z=-.46-meleeLunge*.3;}
-  camera.rotation.y=yaw+recoilYaw;camera.rotation.x=pitch+recoilPitch;camera.rotation.z=strafeTilt;
+  if(meleeLunge>0)meleeLunge-=dt;
+  camera.rotation.y=yaw+recoilYaw;camera.rotation.x=pitch+recoilPitch;camera.rotation.z=strafeTilt+leanAmt*.12;
   // Combo timer
   if(comboTimer>0){comboTimer-=dt;if(comboTimer<=0){comboCount=0;updateComboDisplay();}}
   // Auto fire
@@ -1274,22 +1331,23 @@ function showScoresScreen(){
 // INPUT
 document.addEventListener('keydown',e=>{
   keys[e.code]=true;
-  if(['Space','ArrowUp','ArrowDown','ArrowLeft','ArrowRight'].includes(e.code))e.preventDefault();
+  if(['Space','Tab','ArrowUp','ArrowDown','ArrowLeft','ArrowRight'].includes(e.code))e.preventDefault();
   if(e.code==='Escape'){if(started&&!gameOver){togglePause();}return;}
   if(!started||gameOver||paused)return;
+  if(e.code==='Space'&&isGrounded){isGrounded=false;velY=JUMP_VEL;jumpOffset=.01;bobTimer=0;}
   if(e.code==='KeyR'&&!reloading)startReload();
   if(e.code==='KeyV')doMelee();
   if(e.code==='KeyG'){const g=weapons[4];if(g.mag>0){curWeaponIdx=4;updateGunModel();fireWeapon();updateHUD();}}
-  if(e.code==='KeyQ'&&!wwActive){wwActive=true;wwAccumX=0;wwAccumY=0;wwSelected=curWeaponIdx;updateWeaponWheel();}
+  if(e.code==='Tab'&&!wwActive){wwActive=true;wwAccumX=0;wwAccumY=0;wwSelected=curWeaponIdx;updateWeaponWheel();}
   const num={Digit1:0,Digit2:1,Digit3:2,Digit4:3,Digit5:4,Digit6:5,Digit7:6}[e.code];
   if(num!==undefined)switchWeapon(num);
 });
 document.addEventListener('keyup',e=>{
   keys[e.code]=false;
-  if(e.code==='KeyQ'&&wwActive){wwActive=false;updateWeaponWheel();if(wwSelected!==curWeaponIdx)switchWeapon(wwSelected);}
+  if(e.code==='Tab'&&wwActive){wwActive=false;updateWeaponWheel();if(wwSelected!==curWeaponIdx)switchWeapon(wwSelected);}
 });
 document.addEventListener('mousedown',e=>{
-  if(e.button===2){if(started&&!gameOver&&document.pointerLockElement===renderer.domElement){isADS=true;document.getElementById('ads-overlay').style.display='block';document.getElementById('crosshair').style.display='none';}return;}
+  if(e.button===2){if(started&&!gameOver&&document.pointerLockElement===renderer.domElement){isADS=true;document.getElementById('ads-overlay').style.display='none';document.getElementById('crosshair').style.display='none';}return;}
   if(e.button!==0)return;if(!started||gameOver)return;
   mouseDown=true;
   if(document.pointerLockElement!==renderer.domElement){renderer.domElement.requestPointerLock();return;}
@@ -1338,13 +1396,14 @@ function startGame(){
   health=MAX_HEALTH+persistentData.upgrades.hp*25;score=0;wave=1;
   yaw=0;pitch=0;bobTimer=0;dayFactor=0;shakeAmt=0;
   reloading=false;mouseDown=false;lowAmmoBeeped=false;groansT=0;
-  isADS=false;currentFOV=72;recoilPitch=0;recoilYaw=0;
-  camera.fov=72;camera.updateProjectionMatrix();
+  isADS=false;currentFOV=HIP_FOV;recoilPitch=0;recoilYaw=0;
+  camera.fov=HIP_FOV;camera.updateProjectionMatrix();
   document.getElementById('ads-overlay').style.display='none';document.getElementById('crosshair').style.display='block';
   reloading=false;reloadEndTime=0;
   document.getElementById('reload-msg').style.display='none';
   document.getElementById('dmg').style.background='rgba(200,0,0,0)';
   sprintEnergy=100;isSprinting=false;canSprint=true;meleeCooldown=0;meleeLunge=0;scoreBanked=false;autoFireT=0;
+  isCrouching=false;velY=0;jumpOffset=0;isGrounded=true;leanAmt=0;
   comboCount=0;comboTimer=0;updateComboDisplay();
   weaponSwapTimer=0;pendingSwapIdx=-1;
   lastFireT=-9999;
@@ -1396,7 +1455,7 @@ function endGame(){
   persistentData.scores.push(score);savePersistent();
   reloading=false;reloadEndTime=0;
   document.exitPointerLock();
-  isADS=false;currentFOV=72;recoilPitch=0;recoilYaw=0;camera.fov=72;camera.updateProjectionMatrix();
+  isADS=false;currentFOV=HIP_FOV;recoilPitch=0;recoilYaw=0;camera.fov=HIP_FOV;camera.updateProjectionMatrix();
   document.getElementById('ads-overlay').style.display='none';document.getElementById('crosshair').style.display='block';
   document.getElementById('click-resume').style.display='none';
   document.getElementById('final-score').textContent='SCORE: '+score;
